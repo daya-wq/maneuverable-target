@@ -37,7 +37,7 @@ from omni.isaac.core.utils.extensions import enable_extension
 from omni.isaac.core.utils.viewports import set_camera_view
 
 from tensordict.tensordict import TensorDict, TensorDictBase
-from torchrl.data import CompositeSpec, TensorSpec, DiscreteTensorSpec
+from omni_drones.utils.torchrl.specs import CompositeSpec, DiscreteTensorSpec, TensorSpec
 from torchrl.envs import EnvBase
 
 from omni_drones.robots.robot import RobotBase
@@ -58,7 +58,7 @@ class IsaacEnv(EnvBase):
         # store inputs to class
         self.cfg = cfg
         self.enable_render(not headless)
-        self.enable_viewport = True
+        self.enable_viewport = bool((not headless) or cfg.get("record_eval_video", False))
         # extract commonly used parameters
         self.num_envs = self.cfg.env.num_envs
         self.max_episode_length = self.cfg.env.max_episode_length
@@ -389,4 +389,3 @@ class _AgentSpecView(Dict[str, AgentSpec]):
         __value._env = self.env
         return self.env._agent_spec.__setitem__(__key, __value)
         
-

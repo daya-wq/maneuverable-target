@@ -14,7 +14,27 @@ inertia:
   zz: 2.17e-5
 mass: 0.0321
 l: 0.096
-drag_coef: 0.0
+# Body-frame linear drag coefficients in 1/s.
+# Source: N.O. Abuter Grebe, "Differential Dynamic Programming for Aerial
+# Robots using an Aerodynamics Model", TU Delft, 2017, p.49. The identified
+# lateral body-frame coefficients are Cx = Cy = 0.0195 N·s/m. Using the same
+# magnitude for z gives a conservative, strictly dissipative 6-DoF drag model
+# for aggressive flight. With mass 0.0321 kg this becomes:
+#   kx = ky = 0.6075 1/s
+#   kz = 0.4206 1/s
+#
+# The same thesis also identifies a negative vertical net aerodynamic term
+# Cz = -0.0135 N·s/m. We do not encode that as ordinary body-z drag here,
+# because doing so lets large-pitch forward flight convert horizontal speed
+# into a non-physical body-z acceleration channel. Instead it is modeled
+# separately below as an optional world-vertical aerodynamic correction.
+drag_coef: [0.6075, 0.6075, 0.4206]
+
+# World-vertical net aerodynamic coefficient in 1/s, derived from the thesis'
+# Cz = -0.0135 N·s/m / 0.0321 kg = 0.4206 1/s. This is applied only to world
+# vertical velocity, acting as a vertical inflow / thrust-efficiency correction
+# rather than a generic body-z drag term.
+vertical_aero_coef: 0.0
 rotor_configuration:
   arm_lengths:
   - 0.043

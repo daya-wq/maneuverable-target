@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from torchrl.envs import EnvBase
-from torchrl.data import TensorSpec, CompositeSpec
+from omni_drones.utils.torchrl.specs import CompositeSpec, TensorSpec
 
 from typing import Optional
 
@@ -53,4 +53,3 @@ class AgentSpec:
             return self._env.output_spec["_done_spec"][self.done_key]
         except:
             return self._env.done_spec[self.done_key]
-

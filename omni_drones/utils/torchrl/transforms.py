@@ -21,7 +21,8 @@
 # SOFTWARE.
 
 
-from collections import Callable, defaultdict
+from collections import defaultdict
+from collections.abc import Callable
 from typing import Any, Dict, Optional, Sequence, Union, Tuple
 
 import torch
@@ -36,13 +37,13 @@ from torchrl.envs.transforms import (
     FlattenObservation,
     CatTensors
 )
-from torchrl.data import (
-    TensorSpec,
+from omni_drones.utils.torchrl.specs import (
     BoundedTensorSpec,
-    UnboundedContinuousTensorSpec,
+    CompositeSpec,
     DiscreteTensorSpec,
     MultiDiscreteTensorSpec,
-    CompositeSpec,
+    TensorSpec,
+    UnboundedContinuousTensorSpec,
 )
 from .env import AgentSpec
 from dataclasses import replace
@@ -559,4 +560,3 @@ class History(Transform):
                 item_history = tensordict.get(out_key)
                 item_history[_reset] = 0.
         return tensordict
-

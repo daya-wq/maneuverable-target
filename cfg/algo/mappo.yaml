@@ -1,16 +1,27 @@
 name: mappo
 
 # ppo
-train_every: 64
+train_every: 128
 num_minibatches: 16
-ppo_epochs: 4
-use_TP_net: 1
-TP_epochs: 1
-clip_param: 0.02
-entropy_coef: 0.0
-entropy_schedule:
+ppo_epochs: 2
+predictor:
   enabled: true
-  hold_coef: 0.0
+  lr: 0.0003
+  epochs: 1
+  num_minibatches: 4
+  lambda_strategic: 1.0
+  lambda_gmm: 1.0
+  lambda_speed: 0.02
+  lambda_accel: 0.02
+  lambda_height: 0.0
+  dt_pred: 0.05
+  max_speed: 3.0
+  max_accel: 3.0
+clip_param: 0.1
+entropy_coef: 0.001
+entropy_schedule:
+  enabled: false
+  hold_coef: 0.001
   release_coef: 0.001
   success_threshold: 0.60
   success_target: 0.80
@@ -23,10 +34,10 @@ normalize_advantages: True
 
 warmstart:
   actor_freeze:
-    enabled: true
+    enabled: false
     frames: 5000000
   actor_lr_warmup:
-    enabled: true
+    enabled: false
     frames: 100000000
     lr_init: 0.000004
     lr_final: ${algo.actor.lr}
@@ -36,10 +47,10 @@ warmstart:
     lr_init: ${algo.critic.lr}
     lr_final: ${algo.critic.lr}
   actor_log_std_schedule:
-    enabled: true
+    enabled: false
     reset_on_curriculum_stage: true
     adaptive_release:
-      enabled: true
+      enabled: false
       min_frames: 100000000
       success_threshold: 0.70
       mse_threshold: 0.01
@@ -63,53 +74,28 @@ warmstart:
       - -3.688879
       - -2.995732
   kl_reg:
-    enabled: true
-    target_kl: 0.03
+    enabled: false
+    target_kl: 0.2
     coef: 0.0
-    hard_stop: true
+    hard_stop: false
   anchor:
     enabled: false
     coef_init: 0.0
     coef_final: 0.0
     decay_frames: 0
     loss_type: mse
-  expert_kl:
-    enabled: true
-    coef_init: 1.0
-    coef_final: 1.0
-    decay_frames: 0
-    reset_on_curriculum_stage: true
-    decay_after_eval_success:
-      enabled: true
-      success_threshold: 0.60
-      consecutive_evals: 3
-      min_frames: 5000000
-    loss_type: mse
-    fixed_std: 0.01
-    mse_boost_enabled: true
-    mse_boost_threshold: 0.02
-    mse_boost_coef: 2.0
-    mse_boost_ema_beta: 0.95
-    max_loss: null
-    pred_mode: oracle_pos
-    strategy_variant: expert2
-    forward_dir_mode: default
-    enable_goal_mode: false
-    enable_close_mode: true
-    enable_rush_mode: false
-    expert2_front_layout: symmetric
 
 reward_weights: null # null means all 1.0
 share_actor: True
 critic_input: state # `obs` or `state`
 
 actor:
-  lr: 0.000004
+  lr: 0.0001
   lr_scheduler: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
   lr_scheduler_kwargs:
     T_0: 2000
     T_mult: 2
-    eta_min: 0.0000005
+    eta_min: 0.00001
   
   # mlp
   hidden_units: [256, 256, 256]
@@ -123,14 +109,9 @@ actor:
   use_orthogonal: true
 
   tanh: true
-  log_std_init: -4.605170
-  log_std_min: -4.605170
-  log_std_max: -1.0
-  bc_aux:
-    enabled: false
-    hidden_dim: 256
-    condition_action_on_aux: true
-    condition_hidden_dim: 256
+  log_std_init: -1.0
+  log_std_min: -3.0
+  log_std_max: 0.0
 
   # rnn:
   #   cls: gru

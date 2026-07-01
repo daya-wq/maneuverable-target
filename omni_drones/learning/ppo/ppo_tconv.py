@@ -26,7 +26,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as D
 
-from torchrl.data import CompositeSpec, TensorSpec
+from omni_drones.utils.torchrl.specs import CompositeSpec, TensorSpec
 from torchrl.modules import ProbabilisticActor
 from torchrl.envs.transforms import CatTensors
 from tensordict import TensorDict

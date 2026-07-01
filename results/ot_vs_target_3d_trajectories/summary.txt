@@ -1,0 +1,15 @@
+seed_base=42
+target: 4-strategic + 9-candidate optimal maneuver + 6DoF
+pursuer: OT-guided kinematic GMM + 6DoF (no RL residual)
+dt=0.01, max_steps=1200
+
+01 | seed= 89250 | CAPTURED     | duration=  8.4s | min_dist=0.380m | tactical_switches= 5
+02 | seed=773956 | TIMEOUT      | duration= 12.0s | min_dist=0.402m | tactical_switches= 5
+03 | seed=654571 | TIMEOUT      | duration= 12.0s | min_dist=0.640m | tactical_switches=10
+04 | seed=438878 | TIMEOUT      | duration= 12.0s | min_dist=1.160m | tactical_switches= 5
+05 | seed=433015 | GOAL_REACHED | duration=  4.9s | min_dist=0.795m | tactical_switches= 3
+06 | seed=858597 | TIMEOUT      | duration= 12.0s | min_dist=0.577m | tactical_switches= 4
+07 | seed= 85945 | TIMEOUT      | duration= 12.0s | min_dist=0.552m | tactical_switches= 8
+08 | seed=697368 | GOAL_REACHED | duration=  4.9s | min_dist=0.438m | tactical_switches= 3
+09 | seed=201469 | GOAL_REACHED | duration=  5.0s | min_dist=0.472m | tactical_switches= 3
+10 | seed= 94177 | CAPTURED     | duration=  7.2s | min_dist=0.372m | tactical_switches= 5

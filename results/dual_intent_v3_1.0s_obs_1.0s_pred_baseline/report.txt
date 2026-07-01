@@ -1,0 +1,72 @@
+======================================================================
+双层意图 Query-GMM 轨迹预测网络 v2 评估报告
+======================================================================
+
+1. 基本信息
+   轨迹文件: 200 files
+   总样本数: 16384, 训练: 13107, 验证: 3277
+   输入: (B, 20, 30) @ 0.05s, 1.0s history
+   输出: (B, 20, 3) @ 0.05s, 1.0s prediction
+   模型参数: 459,588
+   训练 epochs: 30
+
+2. 战术意图分类 (4 类)
+   Accuracy: 0.8798
+   Macro F1: 0.8133
+   Weighted F1: 0.8737
+   Far_Rush          P=0.836  R=0.819  F1=0.827  n=243
+   Close_Evade       P=0.938  R=0.976  F1=0.957  n=1811
+   Goal_Priority     P=0.722  R=0.529  F1=0.611  n=486
+   Goal_Sprint       P=0.826  R=0.894  F1=0.859  n=737
+
+3. 机动意图分类 (9 类, Close_Evade only)
+   Accuracy: 0.36734778906264465
+   Macro F1: 0.3639
+   Straight          P=0.261  R=0.178  F1=0.211  n=197
+   Left-Turn         P=0.362  R=0.464  F1=0.407  n=196
+   Right-Turn        P=0.362  R=0.339  F1=0.350  n=189
+   Climb             P=0.345  R=0.390  F1=0.366  n=177
+   Dive              P=0.366  R=0.452  F1=0.404  n=217
+   Left-Climb        P=0.363  R=0.332  F1=0.347  n=196
+   Left-Dive         P=0.420  R=0.312  F1=0.358  n=253
+   Right-Climb       P=0.384  R=0.446  F1=0.412  n=222
+   Right-Dive        P=0.429  R=0.408  F1=0.419  n=164
+
+4. 轨迹预测指标
+   ADE:    0.221031 m
+   FDE:    0.502537 m
+   minADE: 0.159001 m
+   minFDE: 0.332460 m
+   ADE_x:  0.089806 m
+   ADE_y:  0.083424 m
+   ADE_z:  0.144815 m
+
+5. 物理合理性
+   速度超限比例:   0.0912
+   加速度超限比例: 0.3486
+   平均速度:       2.4961 m/s
+   平均加速度:     2.7302 m/s²
+   加速度平滑度:   1.5557
+
+6. 按战术分组的轨迹误差
+   Far_Rush          ADE=0.1478  FDE=0.3898  n=243
+   Close_Evade       ADE=0.2517  FDE=0.5884  n=1811
+   Goal_Priority     ADE=0.1792  FDE=0.3883  n=486
+   Goal_Sprint       ADE=0.1974  FDE=0.4040  n=737
+
+7. GMM 分量质量
+   权重熵:           1.0153
+   分量间平均距离:   0.3263 m
+
+8. 输出文件
+   ade_by_tactical.png
+   confusion_maneuver.png
+   confusion_strategic.png
+   gmm_weight_dist.png
+   metrics.json
+   per_step_ade.png
+   pred_best.png
+   pred_median.png
+   pred_worst.png
+   prototype_model.pt
+   training_curves.png

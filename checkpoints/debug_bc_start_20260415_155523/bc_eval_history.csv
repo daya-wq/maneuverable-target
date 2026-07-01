@@ -1,2 +1,0 @@
-epoch,episodes,capture_rate,goal_rate,landed_rate,timeout_rate,capture_steps_mean
-1,128,0.1796875,0.4140625,0.0078125,0.3984375,265.7826086956522

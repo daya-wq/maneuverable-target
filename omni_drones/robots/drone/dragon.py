@@ -25,7 +25,11 @@ from typing import Sequence
 import torch
 from dataclasses import dataclass, field, MISSING, fields, asdict
 
-from torchrl.data import BoundedTensorSpec, UnboundedContinuousTensorSpec, CompositeSpec
+from omni_drones.utils.torchrl.specs import (
+    BoundedTensorSpec,
+    CompositeSpec,
+    UnboundedContinuousTensorSpec,
+)
 from tensordict.nn import make_functional
 
 import omni.isaac.core.utils.prims as prim_utils
@@ -241,4 +245,3 @@ class Dragon(MultirotorBase):
         UsdPhysics.ArticulationRootAPI.Apply(prim)
         PhysxSchema.PhysxArticulationAPI.Apply(prim)
         return prim
-

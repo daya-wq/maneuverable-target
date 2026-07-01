@@ -23,7 +23,7 @@
 
 import torch
 from functorch import vmap
-from torchrl.data import BoundedTensorSpec, UnboundedContinuousTensorSpec
+from omni_drones.utils.torchrl.specs import BoundedTensorSpec, UnboundedContinuousTensorSpec
 
 from omni_drones.robots.drone import MultirotorBase
 from omni_drones.robots.robot import ASSET_PATH
@@ -82,4 +82,3 @@ class Omav(MultirotorBase):
         state = torch.cat([state, joint_positions, joint_velocities], dim=-1)
         assert not torch.isnan(state).any()
         return state
-

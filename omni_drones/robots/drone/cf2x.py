@@ -4,7 +4,7 @@ import torch
 
 from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.nucleus import get_assets_root_path
-from torchrl.data import BoundedTensorSpec, UnboundedContinuousTensorSpec
+from omni_drones.utils.torchrl.specs import BoundedTensorSpec, UnboundedContinuousTensorSpec
 
 from omni_drones.actuators.damped_motor import NoisyDampedMotor
 from omni_drones.robots.drone.multirotor import MultirotorBase

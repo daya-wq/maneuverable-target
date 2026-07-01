@@ -1,5 +1,0 @@
-case,episodes,capture_rate,capture_count,goal_rate,goal_count,landed_rate,landed_count,timeout_rate,timeout_count,any_collision_rate,any_collision_count,drone_collision_rate,drone_collision_count,collision_pairs_avg,collision_any_avg,collision_drone_avg,collision_wall_avg,collision_floor_avg,capture_steps_mean,pred_pos_err,pred_next_err,log_path
-both_on,1024,66,671,8,83,18,185,8,85,66,675,31,320,8.541,0.171,0.01,0.058,0.006,305.2,0.2507,0.2502,/data/uavlab/multi-uav-pursuit2/analysis/expert2_mode_ablation/20260410_233330/both_on.log
-none,1024,60,614,9,94,8,82,23,234,65,665,20,201,3.797,0.167,0.005,0.062,0.004,298.7,0.2507,0.2502,/data/uavlab/multi-uav-pursuit2/analysis/expert2_mode_ablation/20260410_233330/none.log
-close_only,1024,66,671,8,83,17,173,9,97,65,667,29,299,7.19,0.169,0.009,0.059,0.006,306.1,0.2508,0.2503,/data/uavlab/multi-uav-pursuit2/analysis/expert2_mode_ablation/20260410_233330/close_only.log
-rush_only,1024,59,608,9,96,8,78,24,242,65,667,19,197,3.823,0.167,0.005,0.062,0.004,293.1,0.2507,0.2502,/data/uavlab/multi-uav-pursuit2/analysis/expert2_mode_ablation/20260410_233330/rush_only.log

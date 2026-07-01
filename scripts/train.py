@@ -6,7 +6,23 @@ import time
 import hydra
 import torch
 import numpy as np
-import wandb
+try:
+    import wandb
+except ImportError:
+    class _NoOpWandb:
+        class Video:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        @staticmethod
+        def save(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def finish(*args, **kwargs):
+            return None
+
+    wandb = _NoOpWandb()
 import datetime
 from torch.utils.tensorboard import SummaryWriter
 
@@ -30,7 +46,11 @@ from omni_drones.learning import (
     PPOAdaptivePolicy, PPORNNPolicy
 )
 
-from setproctitle import setproctitle
+try:
+    from setproctitle import setproctitle
+except ImportError:
+    def setproctitle(*args, **kwargs):
+        return None
 from torchrl.envs.transforms import (
     TransformedEnv, 
     InitTracker, 
@@ -52,16 +72,6 @@ class Every:
 
 from typing import Sequence
 from tensordict import TensorDictBase
-
-
-def checkpoint_has_bc_aux(state_dict) -> bool:
-    if bool(state_dict.get("actor_has_bc_aux", False)):
-        return True
-    actor_params = state_dict.get("actor_params", None)
-    if actor_params is None:
-        return False
-    keys = actor_params.to_tensordict().keys(True, True)
-    return any("aux_heads" in "/".join(map(str, key)) for key in keys)
 
 
 def checkpoint_actor_rnn_hidden_size(state_dict):
@@ -183,6 +193,7 @@ def main(cfg):
     tb_writer = SummaryWriter(log_dir=tb_log_dir)
     logging.info(f"TensorBoard log dir: {tb_log_dir}")
 
+    from omni_drones.envs import HideAndSeek, HideAndSeek_envgen, HideAndSeek_deploy  # noqa: F401
     from omni_drones.envs.isaac_env import IsaacEnv
     algos = {
         "ppo": PPOPolicy,
@@ -269,8 +280,6 @@ def main(cfg):
     checkpoint_state = None
     if cfg.model_dir is not None:
         checkpoint_state = load_torch_checkpoint(cfg.model_dir, map_location="cpu")
-        if checkpoint_has_bc_aux(checkpoint_state):
-            cfg.algo.actor.bc_aux.enabled = True
         checkpoint_rnn_hidden = checkpoint_actor_rnn_hidden_size(checkpoint_state)
         if checkpoint_rnn_hidden is not None:
             enable_actor_rnn_cfg(cfg, hidden_size=int(checkpoint_rnn_hidden))
@@ -279,8 +288,13 @@ def main(cfg):
             enable_prev_action_conditioning_cfg(cfg, hidden_dim=int(checkpoint_prev_action_hidden))
 
     agent_spec: AgentSpec = env.agent_spec["drone"]
-    # add base_env.TP to MAPPOPolicy
-    policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=agent_spec, device=cfg.sim.device, TP_net=base_env.TP)
+    policy = algos[cfg.algo.name.lower()](
+        cfg.algo,
+        agent_spec=agent_spec,
+        device=cfg.sim.device,
+        predictor_net=getattr(base_env, "ot_predictor", None),
+        predictor_stride=getattr(base_env, "ot_prediction_stride", 1),
+    )
 
     frames_per_batch = env.num_envs * int(cfg.algo.train_every)
     total_frames = cfg.get("total_frames", -1) // frames_per_batch * frames_per_batch
@@ -289,132 +303,8 @@ def main(cfg):
     save_interval = cfg.get("save_interval", -1)
 
     if checkpoint_state is not None:
-        # torch.save(policy.state_dict(), ckpt_path)
-        if bool(cfg.get("load_actor_tp_only", False)):
-            if not hasattr(policy, "load_actor_tp_state_dict"):
-                raise ValueError("load_actor_tp_only=true requires policy.load_actor_tp_state_dict().")
-            policy.load_actor_tp_state_dict(checkpoint_state)
-            print("Successfully load actor+TP only; critic/value_normalizer kept freshly initialized.")
-        else:
-            policy.load_state_dict(checkpoint_state)
-            print("Successfully load model!")
-    elif cfg.get("tp_model_dir", None) is not None:
-        if not getattr(policy, "use_TP_net", False) or getattr(policy, "TP_net", None) is None:
-            raise ValueError("tp_model_dir was provided, but the current policy does not use TP_net.")
-        tp_state = load_torch_checkpoint(cfg.tp_model_dir)
-        if isinstance(tp_state, dict) and "TP" in tp_state:
-            tp_state = tp_state["TP"]
-        policy.TP_net.load_state_dict(tp_state)
-        print("Successfully load TP model!")
-
-    expert_kl_cfg = cfg.algo.get("warmstart", {}).get("expert_kl", None)
-    expert_kl_enabled = bool(expert_kl_cfg is not None and expert_kl_cfg.get("enabled", False))
-    expert_kl_policy = None
-    expert_kl_policy_cfg = None
-    if expert_kl_enabled:
-        if action_transform != "PIDrate" or action_controller is None:
-            raise ValueError("expert_kl currently expects task.action_transform=PIDrate.")
-        from expert_isaac_eval import (
-            BatchedExpertPolicy,
-            SharedExpertCfg,
-            apply_shared_strategy_defaults,
-        )
-
-        expert_kl_policy_cfg = SharedExpertCfg()
-        expert_kl_policy_cfg.dt = float(cfg.sim.dt)
-        expert_kl_policy_cfg.num_agents = int(base_env.drone.n)
-        expert_kl_policy_cfg.arena_size = float(base_env.arena_size)
-        expert_kl_policy_cfg.max_height = float(base_env.max_height)
-        expert_kl_policy_cfg.max_episode_length = int(base_env.max_episode_length)
-        expert_kl_policy_cfg.v_drone = float(getattr(base_env, "current_pursuer_speed", cfg.task.v_drone))
-        expert_kl_policy_cfg.catch_radius = float(cfg.task.catch_radius)
-        expert_kl_policy_cfg.goal_region_center = base_env.goal_region_center.to(base_env.device)
-        expert_kl_policy_cfg.goal_region_radius = float(cfg.task.goal_region_radius)
-        expert_kl_policy_cfg.goal_region_height = float(cfg.task.goal_region_height)
-        expert_kl_policy_cfg.hover_thrust_ratio = float(
-            (base_env.drone.gravity[0, 0] / action_controller.max_thrusts.sum()).item()
-        )
-        expert_kl_policy_cfg.min_thrust_ratio = float(action_controller.min_thrust_ratio)
-        expert_kl_policy_cfg.max_thrust_ratio = float(action_controller.max_thrust_ratio)
-        expert_kl_policy_cfg.target_clip = float(action_controller.target_clip)
-        expert_kl_policy_cfg.max_body_rate_rad_s = math.radians(180.0 * expert_kl_policy_cfg.target_clip)
-        expert_kl_policy_cfg.forward_dir_mode = str(expert_kl_cfg.get("forward_dir_mode", "default"))
-        apply_shared_strategy_defaults(
-            expert_kl_policy_cfg,
-            strategy_variant=str(expert_kl_cfg.get("strategy_variant", "expert2")),
-            enable_goal_mode=expert_kl_cfg.get("enable_goal_mode", False),
-            enable_close_mode=expert_kl_cfg.get("enable_close_mode", True),
-            enable_rush_mode=expert_kl_cfg.get("enable_rush_mode", False),
-            expert2_front_layout=str(expert_kl_cfg.get("expert2_front_layout", "symmetric")),
-        )
-        if hasattr(base_env, "history_step"):
-            expert_kl_policy_cfg.history_step = int(base_env.history_step)
-        if hasattr(base_env, "future_predcition_step"):
-            expert_kl_policy_cfg.future_predcition_step = int(base_env.future_predcition_step)
-        if hasattr(base_env, "window_step"):
-            expert_kl_policy_cfg.window_step = int(base_env.window_step)
-
-        expert_kl_pred_mode = str(expert_kl_cfg.get("pred_mode", "oracle_pos"))
-        expert_kl_tp_weight = str(expert_kl_cfg.get("tp_weight", "") or cfg.get("tp_model_dir", "") or "")
-        expert_kl_policy = BatchedExpertPolicy(
-            expert_kl_policy_cfg,
-            pred_mode=expert_kl_pred_mode,
-            tp_weight_path=expert_kl_tp_weight,
-            tp_device=str(cfg.sim.device),
-        )
-        logging.info(
-            "Expert KL enabled: coef_init=%s coef_final=%s decay_frames=%s pred_mode=%s strategy=%s close=%s rush=%s layout=%s",
-            expert_kl_cfg.get("coef_init", 0.0),
-            expert_kl_cfg.get("coef_final", 0.0),
-            expert_kl_cfg.get("decay_frames", 0),
-            expert_kl_pred_mode,
-            expert_kl_policy_cfg.strategy_variant,
-            expert_kl_policy_cfg.enable_close_mode,
-            expert_kl_policy_cfg.enable_rush_mode,
-            expert_kl_policy_cfg.expert2_front_layout,
-        )
-
-    @torch.no_grad()
-    def attach_expert_kl_actions(tensordict: TensorDictBase):
-        if expert_kl_policy is None:
-            return tensordict
-        if ("info", "target_state") not in tensordict.keys(True):
-            raise KeyError("expert_kl requires ('info', 'target_state') in rollout tensordict.")
-
-        num_envs, horizon = tensordict.batch_size[:2]
-        n_agents = int(base_env.drone.n)
-        expert_kl_policy_cfg.v_drone = float(getattr(base_env, "current_pursuer_speed", cfg.task.v_drone))
-        expert_kl_policy.reset(int(num_envs))
-
-        drone_state = tensordict[("info", "drone_state")]
-        target_state = tensordict[("info", "target_state")]
-        expert_actions = []
-        for step_idx in range(int(horizon)):
-            drone_state_step = drone_state[:, step_idx]
-            target_state_step = target_state[:, step_idx]
-            drone_pos = drone_state_step[..., :3]
-            drone_quat = drone_state_step[..., 3:7]
-            drone_vel = drone_state_step[..., 7:10]
-            target_pos = target_state_step[..., :3]
-            target_vel = target_state_step[..., 3:6]
-            target_next_pos = target_pos + target_vel * float(cfg.sim.dt)
-            t_cmd, omega_cmd, _ = expert_kl_policy.get_actions_batch(
-                step=step_idx,
-                drone_pos=drone_pos,
-                drone_vel=drone_vel,
-                target_pos=target_pos,
-                target_vel=target_vel,
-                target_next_pos=target_next_pos,
-                drone_quat=drone_quat,
-                return_debug=False,
-            )
-            expert_action = expert_kl_policy.t_omega_to_pidrate_action(
-                t_cmd.reshape(-1),
-                omega_cmd.reshape(-1, 3),
-            ).reshape(num_envs, n_agents, 4)
-            expert_actions.append(expert_action)
-        tensordict[("agents", "expert_action")] = torch.stack(expert_actions, dim=1)
-        return tensordict
+        policy.load_state_dict(checkpoint_state)
+        print("Successfully load model!")
 
     stats_keys = [
         k for k in base_env.observation_spec.keys(True, True) 
@@ -508,7 +398,6 @@ def main(cfg):
     )
     kl_reg_cfg = warmstart_cfg.get("kl_reg", None) if warmstart_cfg is not None else None
     anchor_cfg = warmstart_cfg.get("anchor", None) if warmstart_cfg is not None else None
-    expert_kl_cfg = warmstart_cfg.get("expert_kl", None) if warmstart_cfg is not None else None
 
     actor_freeze_enabled = bool(actor_freeze_cfg is not None and actor_freeze_cfg.get("enabled", False))
     actor_freeze_frames = int(actor_freeze_cfg.get("frames", 0)) if actor_freeze_enabled else 0
@@ -594,11 +483,6 @@ def main(cfg):
         if actor_log_std_adaptive_cfg is not None
         else 0.70
     )
-    actor_log_std_adaptive_mse_threshold = float(
-        actor_log_std_adaptive_cfg.get("mse_threshold", 0.01)
-        if actor_log_std_adaptive_cfg is not None
-        else 0.01
-    )
     actor_log_std_adaptive_consecutive = int(
         actor_log_std_adaptive_cfg.get("consecutive_evals", 1)
         if actor_log_std_adaptive_cfg is not None
@@ -644,45 +528,6 @@ def main(cfg):
     if anchor_enabled and checkpoint_state is not None and hasattr(policy, "capture_anchor_actor"):
         policy.capture_anchor_actor()
         policy.set_anchor_loss(anchor_coef_init, anchor_loss_type)
-
-    expert_kl_enabled = bool(expert_kl_cfg is not None and expert_kl_cfg.get("enabled", False))
-    expert_kl_coef_init = float(expert_kl_cfg.get("coef_init", 0.0)) if expert_kl_enabled else 0.0
-    expert_kl_coef_final = float(expert_kl_cfg.get("coef_final", 0.0)) if expert_kl_enabled else 0.0
-    expert_kl_decay_frames = int(expert_kl_cfg.get("decay_frames", 0)) if expert_kl_enabled else 0
-    expert_kl_loss_type = str(expert_kl_cfg.get("loss_type", "nll")) if expert_kl_enabled else "nll"
-    expert_kl_max_loss = expert_kl_cfg.get("max_loss", None) if expert_kl_enabled else None
-    expert_kl_reset_on_stage = bool(
-        expert_kl_cfg is not None and expert_kl_cfg.get("reset_on_curriculum_stage", False)
-    )
-    expert_kl_decay_gate_cfg = (
-        expert_kl_cfg.get("decay_after_eval_success", None)
-        if expert_kl_cfg is not None
-        else None
-    )
-    expert_kl_decay_gate_enabled = bool(
-        expert_kl_decay_gate_cfg is not None
-        and expert_kl_decay_gate_cfg.get("enabled", False)
-    )
-    expert_kl_decay_gate_success_threshold = float(
-        expert_kl_decay_gate_cfg.get("success_threshold", 0.60)
-        if expert_kl_decay_gate_cfg is not None
-        else 0.60
-    )
-    expert_kl_decay_gate_consecutive = int(
-        expert_kl_decay_gate_cfg.get("consecutive_evals", 3)
-        if expert_kl_decay_gate_cfg is not None
-        else 3
-    )
-    expert_kl_decay_gate_consecutive = max(expert_kl_decay_gate_consecutive, 1)
-    expert_kl_decay_gate_min_frames = int(
-        expert_kl_decay_gate_cfg.get("min_frames", actor_freeze_frames)
-        if expert_kl_decay_gate_cfg is not None
-        else actor_freeze_frames
-    )
-    expert_kl_decay_gate_streak = 0
-    expert_kl_decay_unlocked_frame = None if expert_kl_decay_gate_enabled else 0
-    if expert_kl_enabled and hasattr(policy, "set_expert_kl_loss"):
-        policy.set_expert_kl_loss(expert_kl_coef_init, expert_kl_loss_type, expert_kl_max_loss)
 
     def training_progress(frames: int, iteration: int) -> float:
         if total_frames > 0:
@@ -780,71 +625,10 @@ def main(cfg):
             policy.set_anchor_loss(anchor_coef, anchor_loss_type)
             info["drone/effective_anchor_coef"] = float(anchor_coef)
 
-        if expert_kl_enabled and hasattr(policy, "set_expert_kl_loss"):
-            if expert_kl_decay_frames > 0:
-                if expert_kl_decay_gate_enabled:
-                    if expert_kl_decay_unlocked_frame is None:
-                        kl_frames = 0
-                    else:
-                        kl_frames = max(0, current_frames - int(expert_kl_decay_unlocked_frame))
-                else:
-                    kl_frames = (
-                        max(0, current_frames - curriculum_stage_start_frames)
-                        if expert_kl_reset_on_stage
-                        else current_frames
-                    )
-                decay_progress = min(float(kl_frames) / float(expert_kl_decay_frames), 1.0)
-            else:
-                kl_frames = current_frames
-                decay_progress = 1.0
-            expert_kl_coef = expert_kl_coef_init + (
-                expert_kl_coef_final - expert_kl_coef_init
-            ) * decay_progress
-            policy.set_expert_kl_loss(expert_kl_coef, expert_kl_loss_type, expert_kl_max_loss)
-            info["drone/effective_expert_kl_coef"] = float(expert_kl_coef)
-            info["drone/effective_expert_kl_stage_frames"] = float(kl_frames)
-            if hasattr(policy, "expert_kl_fixed_std"):
-                info["drone/effective_expert_kl_fixed_std"] = float(policy.expert_kl_fixed_std)
-            if expert_kl_decay_gate_enabled:
-                info["drone/expert_kl_decay_gate_unlocked"] = float(expert_kl_decay_unlocked_frame is not None)
-                info["drone/expert_kl_decay_gate_streak"] = float(expert_kl_decay_gate_streak)
-
         if kl_reg_enabled:
             info["drone/kl_target"] = float(kl_target)
             info["drone/kl_coef"] = float(kl_coef)
         return info
-
-    def update_expert_kl_decay_gate(eval_info: dict, current_frames: int):
-        nonlocal expert_kl_decay_gate_streak, expert_kl_decay_unlocked_frame
-
-        if not (expert_kl_enabled and expert_kl_decay_gate_enabled):
-            return {}
-
-        success = float(eval_info.get("eval/stats.success", float("nan")))
-        if math.isnan(success):
-            success = 0.0
-
-        eligible = current_frames >= expert_kl_decay_gate_min_frames
-        passed = eligible and success >= expert_kl_decay_gate_success_threshold
-        if expert_kl_decay_unlocked_frame is None:
-            expert_kl_decay_gate_streak = expert_kl_decay_gate_streak + 1 if passed else 0
-            if expert_kl_decay_gate_streak >= expert_kl_decay_gate_consecutive:
-                expert_kl_decay_unlocked_frame = int(current_frames)
-                logging.info(
-                    "[Expert KL] decay unlocked at %d frames | success=%.3f | threshold=%.3f | streak=%d",
-                    current_frames,
-                    success,
-                    expert_kl_decay_gate_success_threshold,
-                    expert_kl_decay_gate_streak,
-                )
-
-        return {
-            "drone/expert_kl_decay_gate_eligible": float(eligible),
-            "drone/expert_kl_decay_gate_pass": float(passed),
-            "drone/expert_kl_decay_gate_streak": float(expert_kl_decay_gate_streak),
-            "drone/expert_kl_decay_gate_unlocked": float(expert_kl_decay_unlocked_frame is not None),
-            "drone/expert_kl_decay_gate_success_threshold": float(expert_kl_decay_gate_success_threshold),
-        }
 
     def update_actor_log_std_adaptive_gate(eval_info: dict, current_frames: int):
         nonlocal actor_log_std_adaptive_streak, actor_log_std_adaptive_unlocked_frame
@@ -855,24 +639,20 @@ def main(cfg):
         success = float(eval_info.get("eval/stats.success", float("nan")))
         if math.isnan(success):
             success = 0.0
-        expert_mse_ema = getattr(policy, "expert_kl_mse_ema", None)
-        expert_mse_ema = float("inf") if expert_mse_ema is None else float(expert_mse_ema)
 
         eligible = current_frames >= actor_log_std_adaptive_min_frames
         passed = (
             eligible
             and success >= actor_log_std_adaptive_success_threshold
-            and expert_mse_ema <= actor_log_std_adaptive_mse_threshold
         )
         if actor_log_std_adaptive_unlocked_frame is None:
             actor_log_std_adaptive_streak = actor_log_std_adaptive_streak + 1 if passed else 0
             if actor_log_std_adaptive_streak >= actor_log_std_adaptive_consecutive:
                 actor_log_std_adaptive_unlocked_frame = int(current_frames)
                 logging.info(
-                    "[Actor std] adaptive release unlocked at %d frames | success=%.3f | expert_mse_ema=%.5f",
+                    "[Actor std] adaptive release unlocked at %d frames | success=%.3f",
                     current_frames,
                     success,
-                    expert_mse_ema,
                 )
 
         return {
@@ -885,15 +665,10 @@ def main(cfg):
             "drone/actor_log_std_adaptive_gate_success_threshold": float(
                 actor_log_std_adaptive_success_threshold
             ),
-            "drone/actor_log_std_adaptive_gate_mse_threshold": float(
-                actor_log_std_adaptive_mse_threshold
-            ),
-            "drone/actor_log_std_adaptive_gate_mse_ema": float(expert_mse_ema),
         }
 
     def update_curriculum_from_eval(eval_info: dict, current_frames: int):
         nonlocal curriculum_eval_promote_streak, curriculum_stage_start_frames
-        nonlocal expert_kl_decay_gate_streak, expert_kl_decay_unlocked_frame
         nonlocal actor_log_std_adaptive_streak, actor_log_std_adaptive_unlocked_frame
 
         info = {}
@@ -938,9 +713,6 @@ def main(cfg):
             current_stage = int(getattr(base_env, "curriculum_stage", next_stage))
             curriculum_stage_start_frames = int(current_frames)
             curriculum_eval_promote_streak = 0
-            if expert_kl_decay_gate_enabled and expert_kl_reset_on_stage:
-                expert_kl_decay_gate_streak = 0
-                expert_kl_decay_unlocked_frame = None
             if actor_log_std_adaptive_enabled and actor_log_std_schedule_reset_on_stage:
                 actor_log_std_adaptive_streak = 0
                 actor_log_std_adaptive_unlocked_frame = None
@@ -1000,7 +772,8 @@ def main(cfg):
         n_envs = int(base_env.num_envs)
         n_agents = int(base_env.drone.n)
         done_mask = torch.zeros(n_envs, dtype=torch.bool, device=base_env.device)
-        zero_action = torch.zeros(n_envs, n_agents, 4, device=base_env.device)
+        action_dim = int(base_env.action_spec[("agents", "action")].shape[-1])
+        zero_action = torch.zeros(n_envs, n_agents, action_dim, device=base_env.device)
         eval_stats = []
         latest_stats = None
         for step_idx in range(base_env.max_episode_length):
@@ -1069,14 +842,12 @@ def main(cfg):
         info.update(update_entropy_schedule(collector._frames, stats))
         info.update(update_warmstart_controls(collector._frames))
 
-        attach_expert_kl_actions(data_td)
         info.update(policy.train_op(data_td))
 
         if eval_interval > 0 and i % eval_interval == 0:
             logging.info(f"Eval at {collector._frames} steps.")
             eval_info = evaluate(progress=training_progress(collector._frames, i))
             info.update(eval_info)
-            info.update(update_expert_kl_decay_gate(eval_info, collector._frames))
             info.update(update_actor_log_std_adaptive_gate(eval_info, collector._frames))
             info.update(update_curriculum_from_eval(eval_info, collector._frames))
             env.train()

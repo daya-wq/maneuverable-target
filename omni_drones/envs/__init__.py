@@ -20,5 +20,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .hide_and_seek import HideAndSeek, HideAndSeek_envgen, HideAndSeek_deploy
 from .isaac_env import IsaacEnv
+
+__all__ = [
+    "IsaacEnv",
+    "HideAndSeek",
+    "HideAndSeek_envgen",
+    "HideAndSeek_deploy",
+]
+
+
+def __getattr__(name):
+    if name in {"HideAndSeek", "HideAndSeek_envgen", "HideAndSeek_deploy"}:
+        from .hide_and_seek import HideAndSeek, HideAndSeek_envgen, HideAndSeek_deploy
+
+        return {
+            "HideAndSeek": HideAndSeek,
+            "HideAndSeek_envgen": HideAndSeek_envgen,
+            "HideAndSeek_deploy": HideAndSeek_deploy,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

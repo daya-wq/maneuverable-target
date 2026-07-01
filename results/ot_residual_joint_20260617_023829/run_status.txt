@@ -1,0 +1,12 @@
+tmux_session=ot_residual_joint_20260617_023829
+started_at=2026-06-17 02:41 Asia/Shanghai
+completed_at=2026-06-17 02:44 Asia/Shanghai
+status=completed
+log=results/ot_residual_joint_20260617_023829/train.log
+launch=results/ot_residual_joint_20260617_023829/launch.sh
+checkpoint_dir=checkpoints/HideAndSeek_20260617_024200
+final_checkpoint=checkpoints/HideAndSeek_20260617_024200/checkpoint_final.pt
+tensorboard_dir=runs/HideAndSeek_20260617_024200
+frames=262144
+updates=32
+processes=none

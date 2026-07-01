@@ -1,637 +1,0 @@
-[Warning] [omni.isaac.kit.simulation_app] Modules: ['omni_drones', 'omni_drones.utils', 'omni_drones.utils.torchrl', 'omni_drones.utils.torchrl.env', 'omni_drones.utils.torchrl.collector', 'omni_drones.utils.torchrl.transforms', 'omni_drones.utils.wandb', 'omni_drones.learning', 'omni_drones.learning.mappo', 'omni_drones.learning.utils', 'omni_drones.learning.utils.valuenorm', 'omni_drones.learning.utils.gae', 'omni_drones.learning.modules', 'omni_drones.learning.modules.distributions', 'omni_drones.learning.modules.rnn', 'omni_drones.learning.common', 'omni_drones.learning.modules.networks', 'omni_drones.learning.ppo', 'omni_drones.learning.ppo.ppo', 'omni_drones.learning.ppo.common', 'omni_drones.learning.ppo.ppo_adapt', 'omni_drones.learning.ppo.ppo_rnn', 'omni_drones.learning.ppo.ppo_tconv', 'omni_drones.learning.ppo.ppo_sdf_nav', 'omni_drones.learning._ppo', 'omni', 'omni.kit.app._impl.telemetry_helpers'] were loaded before SimulationApp was started and might not be loaded correctly.
-[Warning] [omni.isaac.kit.simulation_app] Please check to make sure no extra omniverse or pxr modules are imported before the call to SimulationApp(...)
-[Warning] [omni.kit.app.plugin] No crash reporter present, dumps uploading isn't available.
-[Info] [carb] Logging to file: /data/uavlab/isaac_sim_2022.2.0/kit/logs/Kit/Isaac-Sim/2022.2/kit_20260419_213138.log
-2026-04-19 13:31:38 [0ms] [Warning] [omni.ext.plugin] [ext: omni.drivesim.sensors.nv.lidar] Extensions config 'extension.toml' doesn't exist '/data/uavlab/isaac_sim_2022.2.0/exts/omni.drivesim.sensors.nv.lidar' or '/data/uavlab/isaac_sim_2022.2.0/exts/omni.drivesim.sensors.nv.lidar/config'
-2026-04-19 13:31:38 [0ms] [Warning] [omni.ext.plugin] [ext: omni.drivesim.sensors.nv.radar] Extensions config 'extension.toml' doesn't exist '/data/uavlab/isaac_sim_2022.2.0/exts/omni.drivesim.sensors.nv.radar' or '/data/uavlab/isaac_sim_2022.2.0/exts/omni.drivesim.sensors.nv.radar/config'
-[0.151s] [ext: omni.stats-0.0.0] startup
-[0.198s] [ext: omni.rtx.shadercache-1.0.0] startup
-[0.200s] [ext: omni.assets.plugins-0.0.0] startup
-[0.200s] [ext: omni.gpu_foundation-0.0.0] startup
-2026-04-19 13:31:39 [198ms] [Warning] [carb] FrameworkImpl::setDefaultPlugin(client: omni.gpu_foundation_factory.plugin, desc : [carb::graphics::Graphics v2.11], plugin : carb.graphics-vulkan.plugin) failed. Plugin selection is locked, because the interface was previously acquired by: 
-[0.205s] [ext: carb.windowing.plugins-1.0.0] startup
-2026-04-19 13:31:39 [200ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:39 [200ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-[0.206s] [ext: omni.kit.renderer.init-0.0.0] startup
-2026-04-19 13:31:39 [333ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:39 [333ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-2026-04-19 13:31:39 [333ms] [Error] [carb.glinterop.plugin] GLInteropContext::init: carb::windowing is not available
-
-|---------------------------------------------------------------------------------------------|
-| Driver Version: 580.126.9     | Graphics API: Vulkan
-|=============================================================================================|
-| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
-|     |                                  |        |     |            | Device-ID | UUID       |
-|---------------------------------------------------------------------------------------------|
-| 0   | NVIDIA GeForce RTX 4090          | Yes: 0 |     | 24564   MB | 10de      | 0          |
-|     |                                  |        |     |            | 2684      | dfd867e0.. |
-|---------------------------------------------------------------------------------------------|
-| 1   | NVIDIA GeForce RTX 4090          |        |     | 24564   MB | 10de      | 0          |
-|     |                                  |        |     |            | 2684      | 6a5b3e54.. |
-|=============================================================================================|
-| OS: Linux uavlab, Version: 6.8.0-106-generic
-| Processor: 13th Gen Intel(R) Core(TM) i9-13900KF | Cores: Unknown | Logical: 32
-|---------------------------------------------------------------------------------------------|
-| Total Memory (MB): 64052 | Free Memory: 50309
-| Total Page/Swap (MB): 0 | Free Page/Swap: 0
-|---------------------------------------------------------------------------------------------|
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] IOMMU is enabled. Found 20 items in /sys/kernel/iommu_groups/.
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] On Linux only, CUDA and the display driver does not support IOMMU-enabled bare-metal PCIe peer to peer memory copy.
-However, CUDA and the display driver does support IOMMU via VM pass through. As a consequence, users on Linux,
-when running on a native bare metal system, should disable the IOMMU. The IOMMU should be enabled and the VFIO driver
-be used as a PCIe pass through for virtual machines.
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] 
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] -----------------------------------------------------------------------
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] !!!!! Local system validation failed! Incorrect configuration detected.
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin]       Summary below. Details above.
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] -----------------------------------------------------------------------
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] 
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin]  - ECC:                         OK
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin]  - IOMMU:                       FAILED
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] 
-2026-04-19 13:31:39 [702ms] [Warning] [gpu.foundation.plugin] -----------------------------------------------------------------------
-[0.922s] [ext: omni.kit.pipapi-0.0.0] startup
-[0.924s] [ext: omni.kit.pip_archive-0.0.0] startup
-[0.928s] [ext: omni.kit.loop-isaac-1.0.0] startup
-[0.928s] [ext: omni.kit.async_engine-0.0.0] startup
-[0.935s] [ext: omni.kit.test-0.0.0] startup
-[0.953s] [ext: omni.usd.config-1.0.0] startup
-[0.956s] [ext: omni.usd.libs-1.0.0] startup
-[1.042s] [ext: omni.isaac.core_archive-2.0.1] startup
-[1.046s] [ext: omni.pip.torch-1_13_0-0.1.4] startup
-[1.048s] [ext: omni.isaac.ml_archive-1.1.0] startup
-[1.064s] [ext: omni.client-0.1.1] startup
-[1.070s] [ext: omni.appwindow-1.0.1] startup
-2026-04-19 13:31:40 [1,066ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:40 [1,066ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-[1.073s] [ext: omni.kit.renderer.core-0.0.0] startup
-2026-04-19 13:31:xcb_connection_has_error() returned true
-40 [1,069ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:40 [1,069ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-2026-04-19 13:31:40 [1,070ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:40 [1,070ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-[1.077s] [ext: omni.kit.renderer.capture-0.0.0] startup
-[1.079s] [ext: omni.kit.renderer.imgui-0.0.0] startup
-2026-04-19 13:31:40 [1,075ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:40 [1,075ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-2026-04-19 13:31:40 [1,075ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:40 [1,075ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-[1.117s] [ext: carb.audio-0.1.0] startup
-[1.118s] [ext: omni.ui-2.12.23] startup
-[1.125s] [ext: omni.uiaudio-1.0.0] startup
-[1.126s] [ext: omni.kit.mainwindow-1.0.0] startup
-[1.127s] [ext: omni.kit.uiapp-0.0.0] startup
-[1.127s] [ext: omni.usd.schema.physics-1.0.0] startup
-[1.153s] [ext: omni.usd.schema.omniscripting-1.0.0] startup
-[1.159s] [ext: omni.usd.schema.audio-0.0.0] startup
-[1.164s] [ext: omni.usd.schema.semantics-0.0.0] startup
-[1.171s] [ext: omni.usd.schema.anim-0.0.0] startup
-[1.220s] [ext: omni.usd.schema.omnigraph-1.0.0] startup
-[1.227s] [ext: omni.usd.schema.geospatial-0.0.0] startup
-[1.233s] [ext: omni.usd.core-1.0.0] startup
-[1.236s] [ext: omni.gpucompute.plugins-0.0.0] startup
-[1.237s] [ext: omni.timeline-1.0.5] startup
-[1.238s] [ext: omni.kit.audiodeviceenum-1.0.0] startup
-[1.240s] [ext: omni.hydra.usdrt_delegate-4.1.1] startup
-[1.255s] [ext: omni.kit.window.popup_dialog-2.0.15] startup
-[1.259s] [ext: omni.kit.actions.core-1.0.0] startup
-[1.261s] [ext: omni.kit.widget.nucleus_connector-1.0.2] startup
-[1.263s] [ext: omni.kit.commands-1.4.5] startup
-[1.267s] [ext: omni.hydra.scene_delegate-0.3.0] startup
-[1.272s] [ext: omni.usd-1.6.23] startup
-[1.306s] [ext: omni.kit.asset_converter-1.2.39] startup
-[1.315s] [ext: omni.usd.schema.physx-0.0.0] startup
-[1.333s] [ext: omni.usd.schema.isaac-1.0.0] startup
-[1.345s] [ext: omni.usd.schema.forcefield-0.0.0] startup
-[1.350s] [ext: omni.kit.collaboration.channel_manager-1.0.9] startup
-[1.393s] [ext: omni.inspect-1.0.1] startup
-[1.397s] [ext: omni.kit.menu.utils-1.4.7] startup
-[1.403s] [ext: omni.kit.usd.layers-2.0.10] startup
-[1.409s] [ext: omni.graph.core-2.64.7] startup
-[1.412s] [ext: omni.iray.libs-0.0.0] startup
-[1.415s] [ext: omni.kit.primitive.mesh-1.0.6] startup
-[1.417s] [ext: omni.volume-0.1.0] startup
-[1.419s] [ext: omni.mdl.neuraylib-0.1.0] startup
-[1.421s] [ext: omni.kit.stage_templates-1.1.11] startup
-[1.423s] [ext: omni.graph.tools-1.17.0] startup
-[1.431s] [ext: omni.hydra.rtx-0.1.0] startup
-[1.436s] [ext: omni.kit.usd_undo-0.1.1] startup
-[1.437s] [ext: omni.ui.scene-1.5.17] startup
-[1.440s] [ext: omni.graph-1.50.1] startup
-[1.464s] [ext: omni.debugdraw-0.1.1] startup
-[1.468s] [ext: omni.hydra.engine.stats-1.0.0] startup
-[1.472s] [ext: omni.kit.search_core-1.0.1] startup
-[1.473s] [ext: omni.kit.widget.path_field-2.0.4] startup
-[1.476s] [ext: omni.kit.widget.versioning-1.3.8] startup
-[1.477s] [ext: omni.kit.widget.filebrowser-2.3.8] startup
-[1.479s] [ext: omni.kit.widget.browser_bar-2.0.4] startup
-[1.479s] [ext: omni.kit.notification_manager-1.0.4] startup
-[1.480s] [ext: omni.kvdb-0.0.0] startup
-[1.482s] [ext: omni.kit.window.filepicker-2.7.8] startup
-OmniAssetFileFormat
-[1.517s] [ext: omni.kit.viewport.registry-104.0.2] startup
-[1.518s] [ext: omni.kit.window.file_importer-1.0.8] startup
-[1.519s] [ext: omni.hydra.pxr-1.1.2] startup
-[1.522s] [ext: omni.mdl-0.1.0] startup
-[1.534s] [ext: omni.kit.clipboard-1.0.0] startup
-[1.534s] [ext: omni.activity.core-1.0.1] startup
-[1.537s] [ext: omni.kit.hydra_texture-1.0.11] startup
-[1.542s] [ext: omni.kit.material.library-1.3.21] startup
-[1.545s] [ext: omni.kit.menu.create-1.0.8] startup
-[1.546s] [ext: omni.kit.window.drop_support-1.0.1] startup
-[1.546s] [ext: omni.kit.widget.viewport-104.1.15] startup
-[1.547s] [ext: omni.kit.viewport.legacy_gizmos-1.0.8] startup
-[1.550s] [ext: omni.kit.context_menu-1.5.10] startup
-[1.553s] [ext: omni.kit.viewport.window-104.1.18] startup
-[1.566s] [ext: omni.localcache-0.0.0] startup
-[1.568s] [ext: omni.kit.window.viewport-0.0.0] startup
-[2.169s] [ext: omni.convexdecomposition-104.1.6-5.1] startup
-[2.172s] [ext: omni.kit.viewport.utility-1.0.12] startup
-[2.173s] [ext: omni.kit.window.file_exporter-1.0.10] startup
-[2.174s] [ext: omni.ui_query-1.1.1] startup
-[2.176s] [ext: omni.kit.window.file-1.3.30] startup
-[2.177s] [ext: omni.kit.window.content_browser_registry-0.0.1] startup
-[2.178s] [ext: omni.kit.ui_test-1.2.9] startup
-[2.179s] [ext: omni.kit.window.property-1.8.2] startup
-[2.180s] [ext: omni.kit.window.content_browser-2.6.5] startup
-[2.186s] [ext: omni.kit.widget.stage-2.7.18] startup
-[2.189s] [ext: omni.usdphysics-104.1.6-5.1] startup
-[2.191s] [ext: omni.kit.property.usd-3.18.12] startup
-[2.196s] [ext: omni.physx-104.1.6-5.1] startup
-[2.270s] [ext: omni.kit.widget.settings-1.0.1] startup
-[2.271s] [ext: omni.kit.widget.graph-1.5.3] startup
-[2.287s] [ext: omni.kit.widget.text_editor-1.0.2] startup
-[2.288s] [ext: omni.kit.window.preferences-1.3.7] startup
-[2.311s] [ext: omni.kit.window.extensions-1.1.1] startup
-[2.314s] [ext: omni.kit.widget.prompt-1.0.4] startup
-[2.315s] [ext: omni.physics.tensors-0.1.0] startup
-[2.321s] [ext: omni.graph.ui-1.24.1] startup
-[2.392s] [ext: omni.isaac.version-1.0.0] startup
-[2.392s] [ext: omni.physx.tensors-0.1.0] startup
-[2.399s] [ext: omni.graph.action-1.31.0] startup
-[2.404s] [ext: omni.kit.numpy.common-0.1.0] startup
-[2.406s] [ext: omni.kit.graph.delegate.default-1.0.18] startup
-[2.407s] [ext: omni.kit.widget.searchfield-1.0.8] startup
-[2.408s] [ext: omni.isaac.dynamic_control-1.2.2] startup
-[2.412s] [ext: omni.kit.manipulator.viewport-104.0.7] startup
-[2.413s] [ext: omni.kit.graph.editor.core-1.4.7] startup
-[2.414s] [ext: omni.isaac.core-1.42.0] startup
-[2.507s] [ext: omni.graph.visualization.nodes-2.0.0] startup
-[2.512s] [ext: omni.kit.graph.widget.variables-2.0.4] startup
-[2.513s] [ext: omni.isaac.ui-0.4.3] startup
-[2.514s] [ext: omni.isaac.isaac_sensor-2.0.0] startup
-2026-04-19 13:31:41 [2,509ms] [Warning] [omni.isaac.isaac_sensor] omni.isaac.isaac_sensor is deprecated and was renamed; use omni.isaac.sensor
-[2.515s] [ext: omni.isaac.surface_gripper-0.3.2] startup
-2026-04-19 13:31:41 [2,511ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Surface Gripper *********************
-2026-04-19 13:31:41 [2,511ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Surface Gripper uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[2.518s] [ext: omni.kit.graph.usd.commands-1.2.0] startup
-[2.518s] [ext: omni.kit.graph.delegate.modern-1.6.4] startup
-[2.519s] [ext: omni.isaac.manipulators-1.1.0] startup
-[2.520s] [ext: omni.graph.window.core-1.41.0] startup
-[2.525s] [ext: omni.isaac.mjcf-0.3.0] startup
-2026-04-19 13:31:41 [2,525ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription MJCF Importer *********************
-2026-04-19 13:31:41 [2,525ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] MJCF Importer uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[2.530s] [ext: omni.graph.window.generic-1.3.10] startup
-2026-04-19 13:31:41 [2,526ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Push Graph *********************
-2026-04-19 13:31:41 [2,526ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Push Graph uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,526ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Lazy Graph *********************
-2026-04-19 13:31:41 [2,526ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Lazy Graph uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[2.531s] [ext: omni.kit.widget.spinner-1.0.4] startup
-[2.532s] [ext: omni.kit.window.cursor-1.1.1] startup
-[2.532s] [ext: omni.isaac.lula-1.2.1] startup
-[2.539s] [ext: omni.graph.nodes-1.48.3] startup
-[2.546s] [ext: omni.kit.viewport.menubar.core-104.4.1] startup
-[2.553s] [ext: omni.isaac.motion_planning-0.2.1] startup
-[2.558s] [ext: omni.kit.widget.zoombar-1.0.4] startup
-[2.559s] [ext: omni.syntheticdata-0.2.4] startup
-2026-04-19 13:31:41 [2,562ms] [Warning] [omni.kit.viewport.menubar.core.menu_item.viewport_menu_item] ViewportMenuItem order argument is deprecated, use order_setting_path
-[2.570s] [ext: omni.isaac.motion_generation-4.5.5] startup
-[2.572s] [ext: omni.kit.browser.core-2.2.1] startup
-[2.575s] [ext: omni.isaac.synthetic_utils-0.4.2] startup
-[2.579s] [ext: omni.isaac.universal_robots-0.3.1] startup
-[2.579s] [ext: omni.kit.browser.folder.core-1.7.1] startup
-[2.581s] [ext: omni.isaac.urdf-0.5.4] startup
-2026-04-19 13:31:41 [2,580ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription URDF Importer *********************
-2026-04-19 13:31:41 [2,580ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] URDF Importer uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,580ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Carter URDF *********************
-2026-04-19 13:31:41 [2,580ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Carter URDF uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,583ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Franka URDF *********************
-2026-04-19 13:31:41 [2,583ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Franka URDF uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,586ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Kaya URDF *********************
-2026-04-19 13:31:41 [2,586ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Kaya URDF uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,589ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR10 URDF *********************
-2026-04-19 13:31:41 [2,589ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR10 URDF uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[2.598s] [ext: omni.isaac.utils-0.2.3] startup
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR3 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR3 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR5 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR5 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR10 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR10 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR3e *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR3e uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR5e *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR5e uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR10e *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR10e uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription UR16e *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] UR16e uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Cobotta Pro 900 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Cobotta Pro 900 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Cobotta Pro 1300 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Cobotta Pro 1300 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Dofbot *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Dofbot uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Franka *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Franka uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription A1 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] A1 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Go1 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Go1 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription ANYmal C *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ANYmal C uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription ANYmal C *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ANYmal C uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Crazyflie *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Crazyflie uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Quadcopter *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Quadcopter uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Carter V1 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Carter V1 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Carter V2 *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Carter V2 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Jetbot *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Jetbot uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Jetracer *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Jetracer uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Kaya *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Kaya uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Transporter *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Transporter uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Flat Grid *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Flat Grid uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Grid Room *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Grid Room uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Simple Room *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Simple Room uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Small Warehouse *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Small Warehouse uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Small Warehouse With Multiple Shelves *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Small Warehouse With Multiple Shelves uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Full Warehouse *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Full Warehouse uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Hospital *********************
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Hospital uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,594ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Office *********************
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Office uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription tag36h11 *********************
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] tag36h11 uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Allegro Hand *********************
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Allegro Hand uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Shadow Hand *********************
-2026-04-19 13:31:41 [2,595ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Shadow Hand uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[2.600s] [ext: omni.kit.browser.sample-1.2.4] startup
-[2.601s] [ext: omni.graph.scriptnode-0.9.3] startup
-[2.602s] [ext: omni.command.usd-1.0.1] startup
-[2.604s] [ext: omni.warp-0.6.1] startup
-[2.701s] [ext: omni.kit.widget.live_session_management-1.1.3] startup
-[2.703s] [ext: omni.kit.hotkeys.core-1.0.8] startup
-[2.705s] [ext: omni.replicator.core-1.6.4] startup
-2026-04-19 13:31:41 [2,737ms] [Warning] [omni.replicator.core.scripts.annotators] Annotator PostProcessDispatch is already registered, overwriting annotator template
-[2.830s] [ext: omni.kit.widget.highlight_label-1.0.0] startup
-[2.831s] [ext: omni.kit.widget.layers-1.6.9] startup
-[2.837s] [ext: omni.isaac.core_nodes-0.21.0] startup
-[2.845s] [ext: omni.kit.actions.window-1.1.0] startup
-[2.847s] [ext: omni.isaac.debug_draw-0.2.2] startup
-[2.851s] [ext: omni.kit.property.layer-1.1.3] startup
-[2.852s] [ext: omni.isaac.wheeled_robots-0.6.1] startup
-[2.860s] [ext: omni.kit.hotkeys.window-1.1.3] startup
-[2.862s] [ext: omni.isaac.occupancy_map-0.2.6] startup
-2026-04-19 13:31:41 [2,862ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Occupancy Map *********************
-2026-04-19 13:31:41 [2,862ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Occupancy Map uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:41 [2,865ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Block World Generator *********************
-2026-04-19 13:31:41 [2,865ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Block World Generator uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[2.871s] [ext: omni.kit.property.audio-1.0.6] startup
-[2.872s] [ext: omni.kit.property.camera-1.0.3] startup
-[2.873s] [ext: omni.kit.property.geometry-1.2.2] startup
-[2.874s] [ext: omni.kit.widget.stage_icons-1.0.2] startup
-[2.875s] [ext: omni.kit.property.light-1.0.6] startup
-[2.876s] [ext: omni.kit.property.material-1.8.16] startup
-[2.878s] [ext: omni.hydra.scene_api-0.1.1] startup
-[2.889s] [ext: omni.kit.window.stage-2.3.11] startup
-[2.891s] [ext: omni.kit.property.render-1.1.0] startup
-[2.892s] [ext: omni.kit.property.skel-1.0.1] startup
-[2.893s] [ext: omni.kit.property.transform-1.3.4] startup
-[2.896s] [ext: omni.kit.menu.stage-1.2.1] startup
-[2.897s] [ext: omni.kit.manipulator.transform-104.6.11] startup
-[2.899s] [ext: omni.kit.profiler.window-2.0.4] startup
-[2.951s] [ext: omni.kit.property.bundle-1.2.6] startup
-[2.952s] [ext: omni.kit.manipulator.selector-1.0.1] startup
-[2.953s] [ext: omni.kit.manipulator.tool.snap-1.2.2] startup
-[2.955s] [ext: omni.kit.window.toolbar-1.3.3] startup
-[2.959s] [ext: omni.kit.property.isaac-0.1.1] startup
-[2.960s] [ext: omni.kit.stage_column.payload-1.0.8] startup
-[2.961s] [ext: omni.kit.manipulator.camera-104.0.22] startup
-[2.961s] [ext: omni.kit.manipulator.prim-104.10.5] startup
-[2.963s] [ext: omni.kit.manipulator.selection-104.0.6] startup
-[2.964s] [ext: omni.kit.viewport.menubar.camera-104.1.7] startup
-[2.966s] [ext: omni.kit.viewport.menubar.render-104.0.19] startup
-[2.967s] [ext: omni.kit.viewport.menubar.display-104.1.11] startup
-[2.968s] [ext: omni.physx.commands-104.1.6-5.1] startup
-[2.971s] [ext: omni.kit.viewport.menubar.settings-104.3.4] startup
-[2.973s] [ext: omni.rtx.window.settings-0.6.2] startup
-[2.976s] [ext: omni.kit.stage_column.variant-1.0.9] startup
-[2.977s] [ext: omni.physx.ui-104.1.6-5.1] startup
-[3.012s] [ext: omni.kit.viewport.bundle-104.0.2] startup
-[3.012s] [ext: omni.hydra.pxr.settings-1.0.3] startup
-[3.012s] [ext: omni.kit.viewport.menubar.lighting-104.0.8] startup
-[3.013s] [ext: omni.kit.property.physx-0.1.0] startup
-[3.042s] [ext: omni.physx.demos-104.1.6-5.1] startup
-[3.044s] [ext: omni.kit.viewport.pxr-104.0.1] startup
-[3.044s] [ext: omni.kit.viewport.ready-1.0.2] startup
-[3.044s] [ext: omni.kit.viewport.rtx-104.0.0] startup
-[3.044s] [ext: omni.physx.camera-104.1.6-5.1] startup
-[3.050s] [ext: omni.kit.selection-0.1.0] startup
-[3.051s] [ext: omni.physx.cct-104.1.6-5.1] startup
-[3.254s] [ext: omni.physx.supportui-104.1.6-5.1] startup
-[3.300s] [ext: omni.kit.widget.live-2.0.3] startup
-2026-04-19 13:31:42 [3,295ms] [Warning] [omni.kit.widget.live.cache_state_menu] Unable to detect Omniverse Cache Server. Consider installing it for better IO performance.
-[3.301s] [ext: omni.physx.vehicle-104.1.6-5.1] startup
-[3.309s] [ext: omni.kit.menu.edit-1.1.5] startup
-2026-04-19 13:31:42 [3,305ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Toggle Grid Visibility *********************
-2026-04-19 13:31:42 [3,305ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Toggle Grid Visibility uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,305ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Toggle Camera Visibility *********************
-2026-04-19 13:31:42 [3,305ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Toggle Camera Visibility uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,305ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Toggle Light Visibility *********************
-2026-04-19 13:31:42 [3,305ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Toggle Light Visibility uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[3.311s] [ext: omni.kit.window.commands-0.2.4] startup
-[3.311s] [ext: omni.kit.window.console-0.2.3] startup
-[3.319s] [ext: omni.physx.bundle-104.1.6-5.1] startup
-[3.319s] [ext: omni.graph.bundle.action-1.3.0] startup
-[3.319s] [ext: omni.isaac.range_sensor-0.7.0] startup
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Rotating *********************
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Rotating uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Generic *********************
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Generic uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Array *********************
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Array uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Emitter *********************
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Emitter uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription FiringGroup *********************
-2026-04-19 13:31:42 [3,318ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] FiringGroup uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,319ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription LIDAR *********************
-2026-04-19 13:31:42 [3,319ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] LIDAR uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,322ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Ultrasonic *********************
-2026-04-19 13:31:42 [3,322ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Ultrasonic uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,326ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Generic Range Sensor *********************
-2026-04-19 13:31:42 [3,326ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Generic Range Sensor uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[3.336s] [ext: omni.kit.window.script_editor-1.6.4] startup
-[3.342s] [ext: omni.kit.window.status_bar-0.1.5] startup
-[3.345s] [ext: omni.kit.window.title-1.1.2] startup
-2026-04-19 13:31:42 [3,341ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:42 [3,341ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-2026-04-19 13:31:42 [3,341ms] [Warning] [carb] [Plugin: libomni.structuredlog.plugin.so] Module /data/uavlab/isaac_sim_2022.2.0/kit/libomni.structuredlog.plugin.so remained loaded after unload request
-2026-04-19 13:31:42 [3,342ms] [Warning] [carb.windowing-glfw.plugin] GLFW initialization failed.
-2026-04-19 13:31:42 [3,342ms] [Warning] [carb] Failed to startup plugin carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.3]) (impl: carb.windowing-glfw.plugin)
-[3.347s] [ext: omni.replicator.composer-1.2.2] startup
-[3.348s] [ext: omni.replicator.isaac-1.7.3] startup
-[3.355s] [ext: omni.isaac.kit-1.2.1] startup
-[3.355s] [ext: omni.isaac.sensor-5.3.1] startup
-2026-04-19 13:31:42 [3,350ms] [Warning] [omni.ext.plugin] [ext: omni.isaac.sensor-5.3.1] Native plugin search dir contains several files: /data/uavlab/isaac_sim_2022.2.0/exts/omni.isaac.sensor/bin . It makes dir walk slow, replace with the exact path to the plugin instead of a wildcard.
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Contact Sensor *********************
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Contact Sensor uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Imu Sensor *********************
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Imu Sensor uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Rotating *********************
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Rotating uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:4xcb_connection_has_error() returned true
-Starting kit application with the following args:  ['/data/uavlab/isaac_sim_2022.2.0/exts/omni.isaac.kit/omni/isaac/kit/simulation_app.py', '/data/uavlab/isaac_sim_2022.2.0/apps/omni.isaac.sim.python.kit', '--/app/tokens/exe-path=/data/uavlab/isaac_sim_2022.2.0/kit', '--/persistent/app/viewport/displayOptions=3094', '--/rtx/materialDb/syncLoads=True', '--/rtx/hydra/materialSyncLoads=True--/omni.kit.plugin/syncUsdLoads=True', '--/app/renderer/resolution/width=1280', '--/app/renderer/resolution/height=720', '--/app/window/width=1440', '--/app/window/height=900', '--/renderer/multiGpu/enabled=False', '--/app/fastShutdown=True', '--ext-folder', '/data/uavlab/isaac_sim_2022.2.0/exts', '--ext-folder', '/data/uavlab/isaac_sim_2022.2.0/apps', '--/renderer/activeGpu=0', '--/physics/cudaDevice=0', '--portable', '--no-window']
-Passing the following args to the base kit application:  ['task=HideAndSeek', 'headless=true', 'wandb.mode=disabled', 'model_dir=checkpoints/HideAndSeek_20260419_013651/checkpoint_196804608.pt', 'algo.use_TP_net=1', 'algo.actor.bc_aux.enabled=true', 'algo.actor.bc_aux.hidden_dim=256', 'algo.actor.bc_aux.condition_action_on_aux=true', 'algo.actor.bc_aux.condition_hidden_dim=256', 'algo.actor.log_std_init=-2.0', 'algo.actor.log_std_min=-2.0', 'algo.actor.log_std_max=-1.0', 'algo.train_every=64', 'task.v_drone=100.0', 'task.v_prey=0.015', 'task.env.num_envs=64', 'seed=42', '+eval_episodes=500', '+out_path=analysis/eval_no_speed_limit/eval_no_limit_500.json']
-Warp 0.6.1 initialized:
-   CUDA Toolkit: 11.5, Driver: 13.0
-   Devices:
-     "cpu"    | x86_64
-     "cuda:0" | NVIDIA GeForce RTX 4090 (sm_89)
-     "cuda:1" | NVIDIA GeForce RTX 4090 (sm_89)
-   Kernel cache: /home/uavlab/.cache/warp/0.6.1
-[5.504s] RTX ready
-[5.504s] RTX ready
-[2026-04-19 21:31:45,503][root][INFO] - Reading Crazyflie's params from /data/uavlab/multi-uav-pursuit2/omni_drones/robots/assets/usd/crazyflie.yaml.
-[2026-04-19 21:31:46,047][root][INFO] - Reading target_drone's params from /data/uavlab/multi-uav-pursuit2/omni_drones/robots/assets/usd/crazyflie.yaml.
-{'agents': {'TP': {'TP_done': torch.Size([64, 1]),
-                   'TP_groundtruth': torch.Size([64, 3]),
-                   'TP_input': torch.Size([64, 10, 19])},
-            'action': torch.Size([64, 3, 4]),
-            'observation': {'cooperation': torch.Size([64, 3, 1, 24]),
-                            'state_others': torch.Size([64, 3, 2, 9]),
-                            'state_self': torch.Size([64, 3, 1, 23])},
-            'state': {'state_drones': torch.Size([64, 3, 47])}},
- 'done': torch.Size([64, 1]),
- 'info': {'drone_state': torch.Size([64, 3, 13]),
-          'prev_action': torch.Size([64, 3, 4]),
-          'target_state': torch.Size([64, 1, 6])},
- 'next': {'agents': {'TP': {'TP_done': torch.Size([64, 1]),
-                            'TP_groundtruth': torch.Size([64, 3]),
-                            'TP_input': torch.Size([64, 10, 19])},
-                     'observation': {'cooperation': torch.Size([64, 3, 1, 24]),
-                                     'state_others': torch.Size([64, 3, 2, 9]),
-                                     'state_self': torch.Size([64, 3, 1, 23])},
-                     'reward': torch.Size([64, 3, 1]),
-                     'state': {'state_drones': torch.Size([64, 3, 47])}},
-          'done': torch.Size([64, 1]),
-          'info': {'drone_state': torch.Size([64, 3, 13]),
-                   'prev_action': torch.Size([64, 3, 4]),
-                   'target_state': torch.Size([64, 1, 6])},
-          'stats': {'action_error_order1_max': torch.Size([64, 1]),
-                    'action_error_order1_mean': torch.Size([64, 1]),
-                    'any_landed': torch.Size([64, 1]),
-                    'capture_progress_reward': torch.Size([64, 1]),
-                    'catch_reward': torch.Size([64, 1]),
-                    'close_reward': torch.Size([64, 1]),
-                    'collision': torch.Size([64, 1]),
-                    'collision_drone': torch.Size([64, 1]),
-                    'collision_floor': torch.Size([64, 1]),
-                    'collision_penalty': torch.Size([64, 1]),
-                    'collision_wall': torch.Size([64, 1]),
-                    'coop_reward': torch.Size([64, 1]),
-                    'curriculum_capture_step_ema': torch.Size([64, 1]),
-                    'curriculum_pursuer_speed': torch.Size([64, 1]),
-                    'curriculum_stage': torch.Size([64, 1]),
-                    'curriculum_success_ema': torch.Size([64, 1]),
-                    'curriculum_target_speed': torch.Size([64, 1]),
-                    'd_i_mean': torch.Size([64, 1]),
-                    'd_i_min': torch.Size([64, 1]),
-                    'distance_threshold_L': torch.Size([64, 1]),
-                    'first_capture_step': torch.Size([64, 1]),
-                    'goal_penalty': torch.Size([64, 1]),
-                    'goal_progress_reward': torch.Size([64, 1]),
-                    'goal_reached': torch.Size([64, 1]),
-                    'landed_penalty': torch.Size([64, 1]),
-                    'n_agents_ahead_mean': torch.Size([64, 1]),
-                    'out_of_arena': torch.Size([64, 1]),
-                    'phi_block': torch.Size([64, 1]),
-                    'phi_pressure': torch.Size([64, 1]),
-                    'phi_spread': torch.Size([64, 1]),
-                    'phi_team': torch.Size([64, 1]),
-                    'pursuer_collisions_count': torch.Size([64, 1]),
-                    'return': torch.Size([64, 1]),
-                    'role_reward': torch.Size([64, 1]),
-                    'separation_penalty': torch.Size([64, 1]),
-                    'smoothness_coef': torch.Size([64, 1]),
-                    'smoothness_max': torch.Size([64, 1]),
-                    'smoothness_mean': torch.Size([64, 1]),
-                    'smoothness_reward': torch.Size([64, 1]),
-                    'speed_reward': torch.Size([64, 1]),
-                    'spread_reward': torch.Size([64, 1]),
-                    'success': torch.Size([64, 1]),
-                    'sum_detect_step': torch.Size([64, 1]),
-                    'target_predicted_error': torch.Size([64, 1]),
-                    'terminal_reward': torch.Size([64, 1]),
-                    'time_penalty': torch.Size([64, 1]),
-                    'urgent_block_rate': torch.Size([64, 1])}},
- 'stats': {'action_error_order1_max': torch.Size([64, 1]),
-           'action_error_order1_mean': torch.Size([64, 1]),
-           'any_landed': torch.Size([64, 1]),
-           'capture_progress_reward': torch.Size([64, 1]),
-           'catch_reward': torch.Size([64, 1]),
-           'close_reward': torch.Size([64, 1]),
-           'collision': torch.Size([64, 1]),
-           'collision_drone': torch.Size([64, 1]),
-           'collision_floor': torch.Size([64, 1]),
-           'collision_penalty': torch.Size([64, 1]),
-           'collision_wall': torch.Size([64, 1]),
-           'coop_reward': torch.Size([64, 1]),
-           'curriculum_capture_step_ema': torch.Size([64, 1]),
-           'curriculum_pursuer_speed': torch.Size([64, 1]),
-           'curriculum_stage': torch.Size([64, 1]),
-           'curriculum_success_ema': torch.Size([64, 1]),
-           'curriculum_target_speed': torch.Size([64, 1]),
-           'd_i_mean': torch.Size([64, 1]),
-           'd_i_min': torch.Size([64, 1]),
-           'distance_threshold_L': torch.Size([64, 1]),
-           'first_capture_step': torch.Size([64, 1]),
-           'goal_penalty': torch.Size([64, 1]),
-           'goal_progress_reward': torch.Size([64, 1]),
-           'goal_reached': torch.Size([64, 1]),
-           'landed_penalty': torch.Size([64, 1]),
-           'n_agents_ahead_mean': torch.Size([64, 1]),
-           'out_of_arena': torch.Size([64, 1]),
-           'phi_block': torch.Size([64, 1]),
-           'phi_pressure': torch.Size([64, 1]),
-           'phi_spread': torch.Size([64, 1]),
-           'phi_team': torch.Size([64, 1]),
-           'pursuer_collisions_count': torch.Size([64, 1]),
-           'return': torch.Size([64, 1]),
-           'role_reward': torch.Size([64, 1]),
-           'separation_penalty': torch.Size([64, 1]),
-           'smoothness_coef': torch.Size([64, 1]),
-           'smoothness_max': torch.Size([64, 1]),
-           'smoothness_mean': torch.Size([64, 1]),
-           'smoothness_reward': torch.Size([64, 1]),
-           'speed_reward': torch.Size([64, 1]),
-           'spread_reward': torch.Size([64, 1]),
-           'success': torch.Size([64, 1]),
-           'sum_detect_step': torch.Size([64, 1]),
-           'target_predicted_error': torch.Size([64, 1]),
-           'terminal_reward': torch.Size([64, 1]),
-           'time_penalty': torch.Size([64, 1]),
-           'urgent_block_rate': torch.Size([64, 1])}}
-[2026-04-19 21:31:48,772][root][INFO] - Default parameters:
-Mass: [[0.032099999487400055], [0.032099999487400055], [0.032099999487400055]]
-Inertia: [[1.4000000192027073e-05, 1.4000000192027073e-05, 2.1699999706470408e-05], [1.4000000192027073e-05, 1.4000000192027073e-05, 2.1699999706470408e-05], [1.4000000192027073e-05, 1.4000000192027073e-05, 2.1699999706470408e-05]]
-Thrust2Weight: [[0.3999999761581421, 0.3999999761581421, 0.3999999761581421, 0.3999999761581421], [0.3999999761581421, 0.3999999761581421, 0.3999999761581421, 0.3999999761581421], [0.3999999761581421, 0.3999999761581421, 0.3999999761581421, 0.3999999761581421]]
-Force2Moment: [[32.463356018066406, 32.463356018066406, 32.463356018066406, 32.463356018066406], [32.463356018066406, 32.463356018066406, 32.463356018066406, 32.463356018066406], [32.463356018066406, 32.463356018066406, 32.463356018066406, 32.463356018066406]]
-[2026-04-19 21:31:48,807][root][INFO] - Default parameters:
-Mass: [[0.032099999487400055]]
-Inertia: [[1.4000000192027073e-05, 1.4000000192027073e-05, 2.1699999706470408e-05]]
-Thrust2Weight: [[0.3999999761581421, 0.3999999761581421, 0.3999999761581421, 0.3999999761581421]]
-Force2Moment: [[32.463356018066406, 32.463356018066406, 32.463356018066406, 32.463356018066406]]
-CompositeSpec(
-    state_self: UnboundedContinuousTensorSpec(
-        shape=torch.Size([64, 3, 1, 23]),
-        space=None,
-        device=cuda:0,
-        dtype=torch.float32,
-        domain=continuous),
-    state_others: UnboundedContinuousTensorSpec(
-        shape=torch.Size([64, 3, 2, 9]),
-        space=None,
-        device=cuda:0,
-        dtype=torch.float32,
-        domain=continuous),
-    cooperation: UnboundedContinuousTensorSpec(
-        shape=torch.Size([64, 3, 1, 24]),
-        space=None,
-        device=cuda:0,
-        dtype=torch.float32,
-        domain=continuous), device=cuda:0, shape=torch.Size([64, 3]))
-UnboundedContinuousTensorSpec(
-    shape=torch.Size([64, 3, 4]),
-    space=None,
-    device=cuda:0,
-    dtype=torch.float32,
-    domain=continuous)
-✅ Model loaded: checkpoints/HideAndSeek_20260419_013651/checkpoint_196804608.pt
-
-======================================================================
-  BATCH EVALUATION: default
-  Checkpoint: checkpoints/HideAndSeek_20260419_013651/checkpoint_196804608.pt
-  Num envs: 64
-  Target repulsion_coef: 1.0
-  Target accel_limit: 2.0
-  Target max_tilt_deg: 25.0
-  v_prey = 0.015, v_drone = 100.0
-  actual target speed = 1.5
-======================================================================
-
-Eval:   0%|          | 0/1200 [00:00<?, ?it/s]/data/uavlab/Multi-UAV-pursuit-evasion/third_party/tensordict/tensordict/nn/functional_modules.py:542: UserWarning: You are passing a tensordict/tensorclass instance to a module that does not inherit from TensorDictModuleBase. This may lead to unexpected behaviours with functional calls.
-  "You are passing a tensordict/tensorclass instance to a module that "
-Eval:   1%|          | 7/1200 [00:00<00:17, 66.86it/s]Eval:   1%|▏         | 15/1200 [00:00<00:16, 73.38it/s]Eval:   2%|▏         | 23/1200 [00:00<00:15, 74.72it/s]Eval:   3%|▎         | 31/1200 [00:00<00:15, 76.00it/s]Eval:   3%|▎         | 39/1200 [00:00<00:15, 76.20it/s]Eval:   4%|▍         | 47/1200 [00:00<00:15, 74.84it/s]Eval:   5%|▍         | 55/1200 [00:00<00:15, 74.48it/s]Eval:   5%|▌         | 63/1200 [00:00<00:15, 72.68it/s]Eval:   6%|▌         | 71/1200 [00:00<00:15, 72.80it/s]Eval:   7%|▋         | 79/1200 [00:01<00:15, 74.22it/s]Eval:   7%|▋         | 87/1200 [00:01<00:14, 75.55it/s]Eval:   8%|▊         | 95/1200 [00:01<00:14, 76.21it/s]Eval:   9%|▊         | 103/1200 [00:01<00:14, 76.33it/s]Eval:   9%|▉         | 111/1200 [00:01<00:14, 76.44it/s]Eval:  10%|▉         | 119/1200 [00:01<00:14, 76.63it/s]Eval:  11%|█         | 127/1200 [00:01<00:14, 74.68it/s]Eval:  11%|█▏        | 135/1200 [00:01<00:14, 73.78it/s]Eval:  12%|█▏        | 143/1200 [00:01<00:14, 74.17it/s]Eval:  13%|█▎        | 151/1200 [00:02<00:14, 74.49it/s]Eval:  13%|█▎        | 159/1200 [00:02<00:14, 72.79it/s]Eval:  14%|█▍        | 167/1200 [00:02<00:13, 74.40it/s]Eval:  15%|█▍        | 175/1200 [00:02<00:13, 75.44it/s]Eval:  15%|█▌        | 183/1200 [00:02<00:13, 76.49it/s]Eval:  16%|█▌        | 191/1200 [00:02<00:13, 76.73it/s]Eval:  17%|█▋        | 199/1200 [00:02<00:13, 76.34it/s]Eval:  17%|█▋        | 207/1200 [00:02<00:12, 76.43it/s]Eval:  18%|█▊        | 215/1200 [00:02<00:12, 76.05it/s]Eval:  19%|█▊        | 223/1200 [00:02<00:12, 75.76it/s]Eval:  19%|█▉        | 231/1200 [00:03<00:12, 76.71it/s]Eval:  20%|█▉        | 239/1200 [00:03<00:12, 76.47it/s]Eval:  21%|██        | 247/1200 [00:03<00:12, 76.03it/s]Eval:  21%|██▏       | 255/1200 [00:03<00:12, 75.55it/s]Eval:  22%|██▏       | 263/1200 [00:03<00:12, 75.24it/s]Eval:  23%|██▎       | 271/1200 [00:03<00:12, 75.09it/s]Eval:  23%|██▎       | 279/1200 [00:03<00:12, 74.92it/s]Eval:  24%|██▍       | 287/1200 [00:03<00:12, 74.94it/s]Eval:  25%|██▍       | 295/1200 [00:03<00:12, 75.05it/s]Eval:  25%|██▌       | 303/1200 [00:04<00:11, 75.14it/s]Eval:  26%|██▌       | 311/1200 [00:04<00:11, 75.10it/s]Eval:  27%|██▋       | 319/1200 [00:04<00:11, 75.01it/s]Eval:  27%|██▋       | 327/1200 [00:04<00:11, 75.14it/s]Eval:  28%|██▊       | 335/1200 [00:04<00:11, 75.67it/s]Eval:  29%|██▊       | 343/1200 [00:04<00:11, 75.43it/s]Eval:  29%|██▉       | 351/1200 [00:04<00:11, 74.97it/s]Eval:  30%|██▉       | 359/1200 [00:04<00:11, 74.81it/s]Eval:  31%|███       | 367/1200 [00:04<00:11, 74.69it/s]Eval:  31%|███▏      | 375/1200 [00:04<00:11, 74.41it/s]Eval:  32%|███▏      | 383/1200 [00:05<00:10, 74.59it/s]Eval:  33%|███▎      | 391/1200 [00:05<00:10, 74.98it/s]Eval:  33%|███▎      | 399/1200 [00:05<00:10, 74.52it/s]Eval:  34%|███▍      | 407/1200 [00:05<00:10, 73.98it/s]Eval:  35%|███▍      | 415/1200 [00:05<00:10, 74.64it/s]Eval:  35%|███▌      | 423/1200 [00:05<00:10, 75.13it/s]Eval:  36%|███▌      | 431/1200 [00:05<00:10, 75.63it/s]Eval:  37%|███▋      | 439/1200 [00:05<00:10, 75.43it/s]Eval:  37%|███▋      | 447/1200 [00:05<00:09, 75.85it/s]Eval:  38%|███▊      | 455/1200 [00:06<00:09, 76.52it/s]Eval:  39%|███▊      | 463/1200 [00:06<00:09, 76.85it/s]Eval:  39%|███▉      | 471/1200 [00:06<00:09, 77.02it/s]Eval:  40%|███▉      | 479/1200 [00:06<00:09, 77.14it/s]Eval:  41%|████      | 487/1200 [00:06<00:09, 76.81it/s]Eval:  41%|████▏     | 495/1200 [00:06<00:09, 76.16it/s]Eval:  42%|████▏     | 503/1200 [00:06<00:09, 75.77it/s]Eval:  43%|████▎     | 511/1200 [00:06<00:09, 75.62it/s]Eval:  43%|████▎     | 519/1200 [00:06<00:09, 75.50it/s]Eval:  44%|████▍     | 527/1200 [00:06<00:08, 75.50it/s]Eval:  45%|████▍     | 535/1200 [00:07<00:08, 75.51it/s]Eval:  45%|████▌     | 543/1200 [00:07<00:08, 75.85it/s]Eval:  46%|████▌     | 551/1200 [00:07<00:08, 76.03it/s]Eval:  47%|████▋     | 559/1200 [00:07<00:08, 74.73it/s]Eval:  47%|████▋     | 568/1200 [00:07<00:08, 76.37it/s]Eval:  48%|████▊     | 576/1200 [00:07<00:08, 77.20it/s]Eval:  49%|████▊     | 584/1200 [00:07<00:07, 77.87it/s]Eval:  49%|████▉     | 592/1200 [00:07<00:07, 78.32it/s]Eval:  50%|█████     | 600/1200 [00:07<00:07, 78.27it/s]Eval:  51%|█████     | 608/1200 [00:08<00:07, 76.92it/s]Eval:  51%|█████▏    | 616/1200 [00:08<00:07, 76.60it/s]Eval:  52%|█████▏    | 624/1200 [00:08<00:07, 77.35it/s]Eval:  53%|█████▎    | 632/1200 [00:08<00:07, 77.91it/s]Eval:  53%|█████▎    | 640/1200 [00:08<00:07, 78.39it/s]Eval:  54%|█████▍    | 648/1200 [00:08<00:07, 78.23it/s]Eval:  55%|█████▍    | 656/1200 [00:08<00:07, 77.55it/s]Eval:  55%|█████▌    | 664/1200 [00:08<00:06, 77.56it/s]Eval:  56%|█████▌    | 672/1200 [00:08<00:06, 77.45it/s]Eval:  57%|█████▋    | 680/1200 [00:08<00:06, 77.50it/s]Eval:  57%|█████▋    | 688/1200 [00:09<00:06, 77.22it/s]Eval:  58%|█████▊    | 696/1200 [00:09<00:06, 76.33it/s]Eval:  59%|█████▊    | 704/1200 [00:09<00:06, 76.68it/s]Eval:  59%|█████▉    | 712/1200 [00:09<00:06, 76.50it/s]Eval:  60%|██████    | 720/1200 [00:09<00:06, 76.27it/s]Eval:  61%|██████    | 728/1200 [00:09<00:06, 76.09it/s]Eval:  61%|██████▏   | 736/1200 [00:09<00:06, 76.22it/s]Eval:  62%|██████▏   | 744/1200 [00:09<00:05, 76.43it/s]Eval:  63%|██████▎   | 752/1200 [00:09<00:05, 76.23it/s]Eval:  63%|██████▎   | 760/1200 [00:10<00:05, 76.33it/s]Eval:  64%|██████▍   | 768/1200 [00:10<00:05, 76.57it/s]Eval:  65%|██████▍   | 776/1200 [00:10<00:05, 76.60it/s]Eval:  65%|██████▌   | 784/1200 [00:10<00:05, 76.38it/s]Eval:  66%|██████▌   | 792/1200 [00:10<00:05, 76.20it/s]Eval:  67%|██████▋   | 800/1200 [00:10<00:05, 76.01it/s]Eval:  67%|██████▋   | 808/1200 [00:10<00:05, 74.47it/s]Eval:  68%|██████▊   | 816/1200 [00:10<00:05, 71.98it/s]Eval:  69%|██████▊   | 824/1200 [00:10<00:05, 72.78it/s]Eval:  69%|██████▉   | 832/1200 [00:10<00:04, 74.02it/s]Eval:  70%|███████   | 840/1200 [00:11<00:04, 75.50it/s]Eval:  71%|███████   | 848/1200 [00:11<00:04, 76.73it/s]Eval:  71%|███████▏  | 856/1200 [00:11<00:04, 77.55it/s]Eval:  72%|███████▏  | 864/1200 [00:11<00:04, 77.38it/s]Eval:  73%|███████▎  | 872/1200 [00:11<00:04, 77.10it/s]Eval:  73%|███████▎  | 880/1200 [00:11<00:04, 77.29it/s]Eval:  74%|███████▍  | 888/1200 [00:11<00:04, 77.45it/s]Eval:  75%|███████▍  | 896/1200 [00:11<00:03, 77.82it/s]Eval:  75%|███████▌  | 904/1200 [00:11<00:03, 77.14it/s]Eval:  76%|███████▌  | 912/1200 [00:12<00:03, 77.73it/s]Eval:  77%|███████▋  | 920/1200 [00:12<00:03, 77.95it/s]Eval:  77%|███████▋  | 928/1200 [00:12<00:03, 78.03it/s]Eval:  78%|███████▊  | 936/1200 [00:12<00:03, 77.99it/s]Eval:  79%|███████▊  | 944/1200 [00:12<00:03, 77.97it/s]Eval:  79%|███████▉  | 952/1200 [00:12<00:03, 77.52it/s]Eval:  80%|████████  | 960/1200 [00:12<00:03, 77.36it/s]Eval:  81%|████████  | 968/1200 [00:12<00:03, 76.75it/s]Eval:  81%|████████▏ | 976/1200 [00:12<00:02, 76.39it/s]Eval:  82%|████████▏ | 984/1200 [00:12<00:02, 76.78it/s]Eval:  83%|████████▎ | 992/1200 [00:13<00:02, 77.63it/s]Eval:  83%|████████▎ | 1000/1200 [00:13<00:02, 78.22it/s]Eval:  84%|████████▍ | 1008/1200 [00:13<00:02, 77.47it/s]Eval:  85%|████████▍ | 1016/1200 [00:13<00:02, 76.90it/s]Eval:  85%|████████▌ | 1024/1200 [00:13<00:02, 76.44it/s]Eval:  86%|████████▌ | 1032/1200 [00:13<00:02, 76.22it/s]Eval:  87%|████████▋ | 1040/1200 [00:13<00:02, 75.88it/s]Eval:  87%|████████▋ | 1048/1200 [00:13<00:01, 76.33it/s]Eval:  88%|████████▊ | 1056/1200 [00:13<00:01, 76.66it/s]Eval:  89%|████████▊ | 1064/1200 [00:13<00:01, 76.80it/s]Eval:  89%|████████▉ | 1072/1200 [00:14<00:01, 77.14it/s]Eval:  90%|█████████ | 1080/1200 [00:14<00:01, 77.82it/s]Eval:  91%|█████████ | 1088/1200 [00:14<00:01, 78.11it/s]Eval:  91%|█████████▏| 1096/1200 [00:14<00:01, 78.52it/s]Eval:  92%|█████████▏| 1104/1200 [00:14<00:01, 77.07it/s]Eval:  93%|█████████▎| 1112/1200 [00:14<00:01, 77.88it/s]Eval:  93%|█████████▎| 1120/1200 [00:14<00:01, 78.38it/s]Eval:  94%|█████████▍| 1128/1200 [00:14<00:00, 77.79it/s]Eval:  95%|█████████▍| 1136/1200 [00:14<00:00, 77.84it/s]Eval:  95%|█████████▌| 1144/1200 [00:15<00:00, 78.41it/s]Eval:  96%|█████████▌| 1152/1200 [00:15<00:00, 78.49it/s]Eval:  97%|█████████▋| 1160/1200 [00:15<00:00, 78.70it/s]Eval:  97%|█████████▋| 1168/1200 [00:15<00:00, 79.05it/s]Eval:  98%|█████████▊| 1176/1200 [00:15<00:00, 78.88it/s]Eval:  99%|█████████▊| 1184/1200 [00:15<00:00, 79.19it/s]Eval:  99%|█████████▉| 1192/1200 [00:15<00:00, 79.35it/s]Eval: 100%|█████████▉| 1199/1200 [00:15<00:00, 76.27it/s]  [64/64] success=26.6%
-
-======================================================================
-  EVALUATION RESULTS: default
-======================================================================
-  🏆 Success rate:      26.6%  (17/64)
-  🎯 Goal reached:      64.1%
-  🚧 Out of arena:      0.0%
-  ⏱  Timeout:           0.0%
-  💥 Collision rate:     0.465
-  📊 Avg steps:         359
-  📊 Avg success steps: 140
-======================================================================
-
-  Results saved: analysis/batch_eval/eval_default_20260419_213204.json
-2 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Solid State *********************
-2026-04-19 13:31:42 [3,402ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Solid State uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,403ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Contact *********************
-2026-04-19 13:31:42 [3,403ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Contact uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-2026-04-19 13:31:42 [3,404ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription IMU *********************
-2026-04-19 13:31:42 [3,404ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] IMU uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[3.411s] [ext: omni.isaac.franka-0.4.0] startup
-[3.411s] [ext: omni.resourcemonitor-1.0.0] startup
-[3.417s] [ext: omni.rtx.settings.core-0.5.8] startup
-[3.420s] [ext: semantics.schema.editor-0.3.2] startup
-[3.422s] [ext: omni.kit.menu.file-1.1.3] startup
-[3.423s] [ext: omni.isaac.quadruped-1.2.2] startup
-[3.502s] [ext: omni.isaac.cortex-0.2.10] startup
-[3.502s] [ext: omni.graph.window.action-1.4.0] startup
-2026-04-19 13:31:42 [3,497ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] ********************* MenuItemDescription Action Graph *********************
-2026-04-19 13:31:42 [3,497ms] [Warning] [omni.kit.menu.utils.scripts.builder_utils] Action Graph uses onclick_fn and/or unclick_fn which are deprecated. Use onclick_action and unclick_action instead which use omni.kit.actions.core
-[3.503s] [ext: omni.kit.window.stats-0.1.2] startup
-[3.503s] [ext: omni.isaac.sim.python-2022.2.0] startup
-[3.504s] Simulation App Starting
-[5.430s] app ready
-[5.587s] Simulation App Startup Complete
-[6.119s] [ext: omni.physx.flatcache-104.1.6-5.1] startup
-2026-04-19 13:31:46 [7,125ms] [Warning] [omni.isaac.core.utils.nucleus] /persistent/app/omniverse/mountedDrives setting not found
-2026-04-19 13:31:46 [7,125ms] [Warning] [omni.client.plugin]  Tick: authentication: Discovery(ws://localhost:3333): Error creating Api/Connection search: Not connected
-2026-04-19 13:31:47 [8,630ms] [Warning] [carb.flatcache.plugin] UsdRelationship /Render/RenderProduct_Replicator.orderedVars has multiple targets, which is not supported
-
-~*~*~*
-~*~*~* Direct GPU Helper:
-~*~*~*   256 articulations, maxLinks=5
-~*~*~*
-2026-04-19 13:32:04 [26,011ms] [Warning] [carb] Plugin interface for a client: omni.hydratexture.plugin was already released.
-[26.018s] Simulation App Shutting Down
-/home/uavlab/miniconda3/envs/sim/lib/python3.7/multiprocessing/semaphore_tracker.py:144: UserWarning: semaphore_tracker: There appear to be 1 leaked semaphores to clean up at shutdown
-  len(cache))

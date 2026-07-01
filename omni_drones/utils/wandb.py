@@ -2,8 +2,25 @@ import datetime
 import logging
 import os
 
-import wandb
+try:
+    import wandb
+except ImportError:
+    wandb = None
 from omegaconf import OmegaConf
+
+
+class _NoOpRun:
+    def __init__(self):
+        self.config = self
+
+    def update(self, *args, **kwargs):
+        return None
+
+    def log(self, *args, **kwargs):
+        return None
+
+    def finish(self):
+        return None
 
 
 def dict_flatten(a: dict, delim="."):
@@ -41,6 +58,10 @@ def init_wandb(cfg):
     Otherwise, start a fresh new run.
 
     """
+    if wandb is None:
+        logging.warning("wandb is not installed; using a no-op run object.")
+        return _NoOpRun()
+
     wandb_cfg = cfg.wandb
     time_str = datetime.datetime.now().strftime("%m-%d_%H-%M")
     run_name = f"{wandb_cfg.run_name}/{time_str}"

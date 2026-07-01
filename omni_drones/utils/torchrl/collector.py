@@ -23,7 +23,10 @@
 
 import torch
 import time
-from torchrl.collectors import SyncDataCollector as _SyncDataCollector
+try:
+    from torchrl.collectors import SyncDataCollector as _SyncDataCollector
+except ImportError:
+    from torchrl.collectors import Collector as _SyncDataCollector
 from torchrl.collectors.utils import split_trajectories
 # from torchrl.envs.utils import _replace_last, step_mdp
 from tensordict.tensordict import TensorDictBase

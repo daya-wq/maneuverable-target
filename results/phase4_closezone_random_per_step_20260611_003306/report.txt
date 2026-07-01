@@ -1,0 +1,45 @@
+Phase 4 Evaluation Report
+========================================================================
+
+Experiment:
+  Name = phase4_closezone_random_per_step_20260611_003306
+  FSM = distance-driven, close zone randomly samples {Spiral_Climb, Sharp_Turn, Dive_Rush} every step
+  Seed = 42
+
+Configuration:
+  T_obs = 5 frames (0.25s)
+  W_mvs = 10 frames (0.5s)
+  T_pred = 5 frames (0.25s)
+  Episodes = 500
+  Arena radius = 10.0m
+  Train/Val = 21620/5405
+
+Dataset Summary:
+  Total samples = 27025
+  Avg episode duration = 6.13s
+  Avg strategy switches / episode = 39.68
+  Strategy counts = {'APF_Rush': 23557, 'Serpentine': 8913, 'Spiral_Climb': 9843, 'Sharp_Turn': 9475, 'Dive_Rush': 9492}
+  Strategy fractions = {'APF_Rush': 0.3844157963446475, 'Serpentine': 0.1454471279373368, 'Spiral_Climb': 0.1606233681462141, 'Sharp_Turn': 0.15461814621409922, 'Dive_Rush': 0.15489556135770235}
+  Intent distribution = {'Straight': '0.093', 'Left-Turn': '0.212', 'Right-Turn': '0.196', 'Climb': '0.034', 'Dive': '0.115', 'Left-Climb': '0.124', 'Left-Dive': '0.058', 'Right-Climb': '0.108', 'Right-Dive': '0.056', 'Hover': '0.003'}
+
+Overall Metrics:
+  Intent Accuracy: 0.5926
+  ADE: 0.3508m
+  FDE: 0.3698m
+
+MVS Ablation:
+  MVS=Real: acc=0.5932, ADE=0.3508, FDE=0.3698
+  MVS=0:    acc=0.5932, ADE=0.3746, FDE=0.3955
+
+Battle Scenarios:
+  Capture rate: 10/10
+  Scene 1: CAPTURED | 3.2s | d0=7.4m | min_d=0.38m | switches=63
+  Scene 2: CAPTURED | 4.1s | d0=7.7m | min_d=0.39m | switches=95
+  Scene 3: CAPTURED | 2.8s | d0=6.5m | min_d=0.39m | switches=62
+  Scene 4: CAPTURED | 3.2s | d0=7.0m | min_d=0.39m | switches=97
+  Scene 5: CAPTURED | 3.5s | d0=6.7m | min_d=0.40m | switches=72
+  Scene 6: CAPTURED | 2.6s | d0=6.6m | min_d=0.39m | switches=68
+  Scene 7: CAPTURED | 5.4s | d0=7.4m | min_d=0.40m | switches=133
+  Scene 8: CAPTURED | 2.8s | d0=7.4m | min_d=0.39m | switches=80
+  Scene 9: CAPTURED | 2.5s | d0=7.1m | min_d=0.39m | switches=79
+  Scene 10: CAPTURED | 3.4s | d0=7.4m | min_d=0.39m | switches=70

@@ -29,7 +29,11 @@ import torch.distributions as D
 import yaml
 from functorch import vmap
 from tensordict.nn import make_functional
-from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
+from omni_drones.utils.torchrl.specs import (
+    BoundedTensorSpec,
+    CompositeSpec,
+    UnboundedContinuousTensorSpec,
+)
 from tensordict import TensorDict
 
 from omni_drones.views import RigidPrimView
@@ -37,6 +41,12 @@ from omni_drones.actuators.rotor_group import RotorGroup
 from omni_drones.controllers import LeePositionController
 
 from omni_drones.robots import RobotBase, RobotCfg
+from omni_drones.utils.aero import (
+    as_body_linear_drag_coeff,
+    as_world_vertical_aero_coeff,
+    compute_body_linear_drag_force,
+    compute_world_vertical_aero_force,
+)
 from omni_drones.utils.torch import (
     normalize, off_diag, quat_rotate, quat_rotate_inverse, quat_axis, symlog
 )
@@ -72,7 +82,14 @@ class MultirotorBase(RobotBase):
         self.inertia_xx = torch.tensor(self.params['inertia']['xx']).to(self.device)
         self.inertia_yy = torch.tensor(self.params['inertia']['yy']).to(self.device)
         self.inertia_zz = torch.tensor(self.params['inertia']['zz']).to(self.device)
-        self.drag_coef_para = torch.tensor(self.params['drag_coef']).to(self.device)
+        self.drag_coef_para = as_body_linear_drag_coeff(
+            self.params["drag_coef"],
+            device=self.device,
+        )
+        self.vertical_aero_coef_para = as_world_vertical_aero_coeff(
+            self.params.get("vertical_aero_coef", 0.0),
+            device=self.device,
+        )
 
         self.action_spec = BoundedTensorSpec(-1, 1, self.num_rotors, device=self.device)
         self.intrinsics_spec = CompositeSpec({
@@ -83,7 +100,8 @@ class MultirotorBase(RobotBase):
             "KM": UnboundedContinuousTensorSpec(self.num_rotors),
             "tau_up": UnboundedContinuousTensorSpec(self.num_rotors),
             "tau_down": UnboundedContinuousTensorSpec(self.num_rotors),
-            "drag_coef": UnboundedContinuousTensorSpec(1),
+            "drag_coef": UnboundedContinuousTensorSpec(3),
+            "vertical_aero_coef": UnboundedContinuousTensorSpec(1),
             "rotor_offset": UnboundedContinuousTensorSpec(1),
         }).to(self.device)
         
@@ -99,7 +117,7 @@ class MultirotorBase(RobotBase):
         self.tunable_intrinsics = [
         'mass', 'inertia', # rigid-body parameters
         'arm_lengths', 'force_constants', 'max_rotation_velocities',
-        'moment_constants', 'time_constant', # rotor configuration
+        'moment_constants', 'drag_coef', 'vertical_aero_coef', 'time_constant', # rotor configuration
         # 'rotor_angles',
         ]
         self.update_sim = self.params['update_sim']
@@ -113,7 +131,14 @@ class MultirotorBase(RobotBase):
             self.max_rotation_velocities = torch.tensor([self.params['rotor_configuration']['max_rotation_velocities'][0]]).float().to(self.device)
             self.moment_constants = torch.tensor([self.params['rotor_configuration']['moment_constants'][0]]).float().to(self.device)
             # self.rotor_angles = torch.tensor(self.params['rotor_configuration']['rotor_angles']).float()
-            self.drag_coef_para = torch.tensor([self.params['drag_coef']]).float().to(self.device)
+            self.drag_coef_para = as_body_linear_drag_coeff(
+                self.params["drag_coef"],
+                device=self.device,
+            ).float()
+            self.vertical_aero_coef_para = as_world_vertical_aero_coeff(
+                self.params.get("vertical_aero_coef", 0.0),
+                device=self.device,
+            ).float()
             self.time_constant = torch.tensor([self.params['rotor_configuration']['time_constant']]).float().to(self.device)
             # self.gain = torch.tensor(self.params['controller_configuration']['gain']).float().to(self.device)
 
@@ -132,6 +157,7 @@ class MultirotorBase(RobotBase):
         para_list.append(self.moment_constants)
         # para_list.append(self.rotor_angles)
         para_list.append(self.drag_coef_para)
+        para_list.append(self.vertical_aero_coef_para.reshape(1))
         para_list.append(self.time_constant)
         # para_list.append(self.gain)
         # import pdb; pdb.set_trace()
@@ -153,6 +179,7 @@ class MultirotorBase(RobotBase):
         self.moment_constants = params['moment_constants']
         # self.rotor_angles = params['rotor_angles']
         self.drag_coef_para = params['drag_coef']
+        self.vertical_aero_coef_para = params.get('vertical_aero_coef', self.vertical_aero_coef_para)
         self.time_constant = params['time_constant']
         # self.gain = params['gain']
 
@@ -263,7 +290,8 @@ class MultirotorBase(RobotBase):
         
         logging.info(str(self))
 
-        self.drag_coef = torch.zeros(*self.shape, 1, device=self.device) * self.drag_coef_para
+        self.drag_coef = torch.ones(*self.shape, 3, device=self.device) * self.drag_coef_para
+        self.vertical_aero_coef = torch.ones(*self.shape, 1, device=self.device) * self.vertical_aero_coef_para
         self.intrinsics = self.intrinsics_spec.expand(self.shape).zero()
 
     # for simopt, set the rotor config
@@ -404,7 +432,8 @@ class MultirotorBase(RobotBase):
         
         # logging.info(str(self))
 
-        self.drag_coef = torch.zeros(*self.shape, 1, device=self.device) * self.drag_coef_para
+        self.drag_coef = torch.ones(*self.shape, 3, device=self.device) * self.drag_coef_para
+        self.vertical_aero_coef = torch.ones(*self.shape, 1, device=self.device) * self.vertical_aero_coef_para
         self.intrinsics = self.intrinsics_spec.expand(self.shape).zero()
 
     def setup_randomization(self, cfg):
@@ -438,6 +467,14 @@ class MultirotorBase(RobotBase):
                 low = self.drag_coef_para * drag_coef_scale[0]
                 high = self.drag_coef_para * drag_coef_scale[1]
                 self.randomization[phase]["drag_coef"] = D.Uniform(
+                    torch.tensor(low, device=self.device),
+                    torch.tensor(high, device=self.device)
+                )
+            vertical_aero_coef_scale = cfg[phase].get("vertical_aero_coef_scale", None)
+            if vertical_aero_coef_scale is not None:
+                low = self.vertical_aero_coef_para * vertical_aero_coef_scale[0]
+                high = self.vertical_aero_coef_para * vertical_aero_coef_scale[1]
+                self.randomization[phase]["vertical_aero_coef"] = D.Uniform(
                     torch.tensor(low, device=self.device),
                     torch.tensor(high, device=self.device)
                 )
@@ -496,7 +533,17 @@ class MultirotorBase(RobotBase):
                 quat_rotate(self.rot, self.thrusts.sum(-2)),
                 kz=0.3
             ).sum(-2)
-        self.forces[:] += (self.drag_coef * self.masses) * self.vel[..., :3]
+        drag_force_body = compute_body_linear_drag_force(
+            self.vel_b[..., :3],
+            self.drag_coef,
+            self.masses,
+        )
+        self.forces[:] += quat_rotate(self.rot, drag_force_body)
+        self.forces[:] += compute_world_vertical_aero_force(
+            self.vel_w[..., :3],
+            self.vertical_aero_coef,
+            self.masses,
+        )
 
         self.rotors_view.apply_forces_and_torques_at_pos(
             self.thrusts.reshape(-1, 3), 
@@ -539,7 +586,17 @@ class MultirotorBase(RobotBase):
                 quat_rotate(self.rot, self.thrusts.sum(-2)),
                 kz=0.3
             ).sum(-2)
-        self.forces[:] += (self.drag_coef * self.masses) * self.vel[..., :3]
+        drag_force_body = compute_body_linear_drag_force(
+            self.vel_b[..., :3],
+            self.drag_coef,
+            self.masses,
+        )
+        self.forces[:] += quat_rotate(self.rot, drag_force_body)
+        self.forces[:] += compute_world_vertical_aero_force(
+            self.vel_w[..., :3],
+            self.vertical_aero_coef,
+            self.masses,
+        )
 
         self.rotors_view.apply_forces_and_torques_at_pos(
             self.thrusts.reshape(-1, 3), 
@@ -585,7 +642,17 @@ class MultirotorBase(RobotBase):
                 quat_rotate(self.rot, self.thrusts.sum(-2)),
                 kz=0.3
             ).sum(-2)
-        self.forces[:] += (self.drag_coef * self.masses) * self.vel[..., :3]
+        drag_force_body = compute_body_linear_drag_force(
+            self.vel_b[..., :3],
+            self.drag_coef,
+            self.masses,
+        )
+        self.forces[:] += quat_rotate(self.rot, drag_force_body)
+        self.forces[:] += compute_world_vertical_aero_force(
+            self.vel_w[..., :3],
+            self.vertical_aero_coef,
+            self.masses,
+        )
 
         self.rotors_view.apply_forces_and_torques_at_pos(
             self.thrusts.reshape(-1, 3), 
@@ -683,9 +750,13 @@ class MultirotorBase(RobotBase):
             self.KM[env_ids] = KM
             self.intrinsics["KM"][env_ids] = KM / self.KM_0
         if "drag_coef" in distributions:
-            drag_coef = distributions["drag_coef"].sample(shape).reshape(-1, 1, 1)
+            drag_coef = distributions["drag_coef"].sample(shape).reshape(-1, 1, 3)
             self.drag_coef[env_ids] = drag_coef
             self.intrinsics["drag_coef"][env_ids] = drag_coef
+        if "vertical_aero_coef" in distributions:
+            vertical_aero_coef = distributions["vertical_aero_coef"].sample(shape).reshape(-1, 1, 1)
+            self.vertical_aero_coef[env_ids] = vertical_aero_coef
+            self.intrinsics["vertical_aero_coef"][env_ids] = vertical_aero_coef
         if "rotor_offset" in distributions:
             offset_scale = distributions["rotor_offset"].sample(shape).reshape(-1, 1, 1)
             pos_offset = self.rotor_pos_0[..., :2] * offset_scale
@@ -755,4 +826,3 @@ def separation(p0, p1, p1_d):
     r_displacement = rel_pos - z_displacement
     r_distance = torch.norm(r_displacement, dim=-1, keepdim=True)
     return z_distance, r_distance
-

@@ -105,12 +105,14 @@ def init_simulation_app(cfg):
         "active_gpu": _get_or_default(sim_cfg, "active_gpu", inferred_gpu),
         "physics_gpu": _get_or_default(sim_cfg, "physics_gpu", inferred_gpu),
     }
-    # load cheaper kit config in headless
-    # if cfg.headless:
-    #     app_experience = f"{os.environ['EXP_PATH']}/omni.isaac.sim.python.gym.headless.kit"
-    # else:
-    #     app_experience = f"{os.environ['EXP_PATH']}/omni.isaac.sim.python.kit"
-    app_experience = f"{os.environ['EXP_PATH']}/omni.isaac.sim.python.kit"
+    # Use the lighter gym headless experience for offscreen evaluation/recording.
+    app_experience_override = cfg.get("app_experience", None)
+    if app_experience_override is not None:
+        app_experience = str(app_experience_override)
+    elif cfg.headless:
+        app_experience = f"{os.environ['EXP_PATH']}/omni.isaac.sim.python.gym.headless.kit"
+    else:
+        app_experience = f"{os.environ['EXP_PATH']}/omni.isaac.sim.python.kit"
     simulation_app = SimulationApp(config, experience=app_experience)
     # simulation_app = SimulationApp(config)
     return simulation_app

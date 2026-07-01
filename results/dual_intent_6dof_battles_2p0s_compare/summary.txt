@@ -1,0 +1,10 @@
+01 | seed=101 | status=GOAL_REACHED | duration= 11.87s | init_nearest= 7.84m | min_dist= 2.48m | tactical_switches= 3 | intent_switches=  9 | bias_switches= 5 | traj=battle_dual_intent_01.npz
+02 | seed=123 | status=TIMEOUT      | duration= 35.00s | init_nearest= 7.94m | min_dist= 0.88m | tactical_switches= 9 | intent_switches= 64 | bias_switches=18 | traj=battle_dual_intent_02.npz
+03 | seed=207 | status=TIMEOUT      | duration= 35.00s | init_nearest= 7.63m | min_dist= 0.45m | tactical_switches= 8 | intent_switches= 55 | bias_switches=14 | traj=battle_dual_intent_03.npz
+04 | seed=314 | status=GOAL_REACHED | duration= 14.10s | init_nearest= 7.75m | min_dist= 1.97m | tactical_switches= 2 | intent_switches= 22 | bias_switches= 5 | traj=battle_dual_intent_04.npz
+05 | seed=409 | status=GOAL_REACHED | duration= 11.75s | init_nearest= 7.71m | min_dist= 1.60m | tactical_switches= 3 | intent_switches= 15 | bias_switches= 3 | traj=battle_dual_intent_05.npz
+06 | seed=512 | status=TIMEOUT      | duration= 35.00s | init_nearest= 7.48m | min_dist= 0.87m | tactical_switches= 6 | intent_switches= 62 | bias_switches=15 | traj=battle_dual_intent_06.npz
+07 | seed=618 | status=GOAL_REACHED | duration= 11.79s | init_nearest= 7.60m | min_dist= 1.69m | tactical_switches= 3 | intent_switches= 19 | bias_switches= 4 | traj=battle_dual_intent_07.npz
+08 | seed=725 | status=GOAL_REACHED | duration= 12.22s | init_nearest= 7.73m | min_dist= 1.50m | tactical_switches= 3 | intent_switches= 14 | bias_switches= 5 | traj=battle_dual_intent_08.npz
+09 | seed=888 | status=CAPTURED     | duration= 16.82s | init_nearest= 7.48m | min_dist= 0.39m | tactical_switches= 5 | intent_switches= 23 | bias_switches= 9 | traj=battle_dual_intent_09.npz
+10 | seed=999 | status=CAPTURED     | duration= 17.28s | init_nearest= 7.92m | min_dist= 0.39m | tactical_switches= 6 | intent_switches= 20 | bias_switches= 7 | traj=battle_dual_intent_10.npz

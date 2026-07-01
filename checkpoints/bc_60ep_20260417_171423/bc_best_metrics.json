@@ -1,9 +1,0 @@
-{
-  "episodes": 512,
-  "capture_rate": 0.3125,
-  "goal_rate": 0.193359375,
-  "landed_rate": 0.0,
-  "timeout_rate": 0.494140625,
-  "capture_steps_mean": 240.8875,
-  "epoch": 20
-}

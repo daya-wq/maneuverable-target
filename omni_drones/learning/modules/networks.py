@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from tensordict import TensorDict
 
 from torch import Tensor
-from torchrl.data import CompositeSpec, TensorSpec
+from omni_drones.utils.torchrl.specs import CompositeSpec, TensorSpec
 
 
 def register(_map: Dict, name=None):

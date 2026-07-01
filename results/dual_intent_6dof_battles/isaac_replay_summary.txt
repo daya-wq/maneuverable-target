@@ -1,0 +1,5 @@
+01 | seed=101 | status=GOAL_REACHED | duration=16.60s | frames=179 | video=isaac_replay_01_goal_reached.mp4
+02 | seed=123 | status=TIMEOUT | duration=35.00s | frames=363 | video=isaac_replay_02_timeout.mp4
+03 | seed=207 | status=TIMEOUT | duration=35.00s | frames=363 | video=isaac_replay_03_timeout.mp4
+04 | seed=314 | status=GOAL_REACHED | duration=19.46s | frames=207 | video=isaac_replay_04_goal_reached.mp4
+05 | seed=409 | status=TIMEOUT | duration=35.00s | frames=363 | video=isaac_replay_05_timeout.mp4

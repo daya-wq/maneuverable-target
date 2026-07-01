@@ -1,0 +1,32 @@
+Phase 4 Evaluation Report
+============================================================
+
+Configuration:
+  T_obs = 5 frames (0.25s)
+  W_mvs = 10 frames (0.5s)
+  T_pred = 5 frames (0.25s)
+  Episodes = 500
+  Arena radius = 10.0m
+  Train/Val = 21260/5315
+
+Overall Metrics:
+  Intent Accuracy: 0.7464
+  ADE: 0.3046m
+  FDE: 0.3160m
+
+MVS Ablation:
+  MVS=Real: acc=0.7493, ADE=0.3046, FDE=0.3160
+  MVS=0:    acc=0.7493, ADE=0.3146, FDE=0.3280
+
+Battle Scenarios:
+  Capture rate: 9/10
+  Scene 1: CAPTURED | 3.1s | d0=7.4m | switches=4
+  Scene 2: ESCAPED | 20.0s | d0=7.7m | switches=30
+  Scene 3: CAPTURED | 3.0s | d0=6.5m | switches=4
+  Scene 4: CAPTURED | 3.2s | d0=7.0m | switches=6
+  Scene 5: CAPTURED | 8.4s | d0=6.7m | switches=11
+  Scene 6: CAPTURED | 2.6s | d0=6.6m | switches=4
+  Scene 7: CAPTURED | 4.7s | d0=7.4m | switches=4
+  Scene 8: CAPTURED | 2.8s | d0=7.4m | switches=4
+  Scene 9: CAPTURED | 2.5s | d0=7.1m | switches=4
+  Scene 10: CAPTURED | 3.5s | d0=7.4m | switches=3

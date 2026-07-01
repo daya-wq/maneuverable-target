@@ -54,7 +54,7 @@ class FakeRobot():
             "KM": UnboundedContinuousTensorSpec(self.num_rotors),
             "tau_up": UnboundedContinuousTensorSpec(self.num_rotors),
             "tau_down": UnboundedContinuousTensorSpec(self.num_rotors),
-            "drag_coef": UnboundedContinuousTensorSpec(1),
+            "drag_coef": UnboundedContinuousTensorSpec(3),
             "rotor_offset": UnboundedContinuousTensorSpec(1),
         }).to(self.device)
 
@@ -154,4 +154,3 @@ class _AgentSpecView(Dict[str, AgentSpec]):
     def __setitem__(self, k: str, v: AgentSpec) -> None:
         v._env = self.env
         return self.env._agent_spec.__setitem__(k, v)
-

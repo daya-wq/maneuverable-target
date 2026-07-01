@@ -1,4 +1,0 @@
-current expert video package
-capture: expert_CAPTURE_seed1076_20260410_213226.mp4
-goal failure: expert_GOAL_ZONE_seed1020_20260410_213158.mp4
-timeout failure: expert_TIMEOUT_seed0_20260410_212942.mp4
