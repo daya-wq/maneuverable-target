@@ -1,0 +1,30 @@
+Strategic GMM Trajectory Predictor — Training Report
+============================================================
+
+Model Architecture:
+  obs_dim      = 30
+  T_obs        = 10 frames (0.50s)
+  T_pred       = 10 frames (0.50s)
+  d_model      = 128
+  n_heads      = 4
+  n_components = 3
+  Parameters   = 366,241
+
+Training Config:
+  Episodes  = 500
+  Train/Val = 20268/5067
+  Epochs    = 60
+  LR        = 0.0005
+
+Final Validation Metrics (best ckpt):
+  Strategic Accuracy = 0.8834
+  minADE             = 0.0356 m
+  FDE                = 0.1151 m
+  Val Loss           = -64.8558
+
+Outputs:
+  strategic_probs  : (B, 4)
+  gmm_weights      : (B, 3)
+  gmm_means        : (B, 3, 10, 3)
+  gmm_vars         : (B, 3, 10, 3)
+  mixed_mu         : (B, 10, 3)  ← RL控制器直接使用
