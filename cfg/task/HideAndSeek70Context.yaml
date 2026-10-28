@@ -1,0 +1,6 @@
+# Candidate only: six local physical-state values, same pursuit encoder/head.
+defaults:
+  - HideAndSeek70Isolated
+
+name: HideAndSeek
+actor_flight_context: true

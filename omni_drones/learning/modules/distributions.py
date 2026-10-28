@@ -73,6 +73,7 @@ class DiagGaussian(nn.Module):
         log_std_init=0.0,
         log_std_min=-5.0,
         log_std_max=1.0,
+        project_log_std=False,
     ):
         super(DiagGaussian, self).__init__()
 
@@ -85,10 +86,19 @@ class DiagGaussian(nn.Module):
         self.log_std = nn.Parameter(torch.full((num_outputs,), float(log_std_init)))
         self.log_std_min = float(log_std_min)
         self.log_std_max = float(log_std_max)
+        self.project_log_std = bool(project_log_std)
+        if not self.log_std_min < self.log_std_max:
+            raise ValueError("log_std_min must be smaller than log_std_max.")
+        if self.project_log_std and not self.log_std_min <= log_std_init <= self.log_std_max:
+            raise ValueError("Projected log_std_init must be inside its bounds.")
 
     def forward(self, x):
         action_mean = self.fc_mean(x)
-        log_std = self.log_std.clamp(self.log_std_min, self.log_std_max)
+        # Projected optimization constrains this parameter AFTER each optimizer
+        # step and checkpoint load. Keep the forward path free of clamp dead zones.
+        log_std = self.log_std if self.project_log_std else self.log_std.clamp(
+            self.log_std_min, self.log_std_max
+        )
         action_std = torch.broadcast_to(torch.exp(log_std), action_mean.shape)
         dist = D.Independent(D.Normal(action_mean, action_std), 1)
         return dist
@@ -222,6 +232,18 @@ class IndependentNormalModule(nn.Module):
 
 class TanhNormalWithEntropy(TanhNormal):
 
+    def __init__(self, loc, scale, min=-1.0, max=1.0, event_dims=1):
+        # TorchRL renamed ``min/max`` to ``low/high``. Support both the
+        # simulator-bundled version and newer development environments.
+        try:
+            super().__init__(
+                loc, scale, low=min, high=max, event_dims=event_dims
+            )
+        except TypeError:
+            super().__init__(
+                loc, scale, min=min, max=max, event_dims=event_dims
+            )
+
     def entropy(self):
         return None
 
@@ -240,11 +262,17 @@ class TanhIndependentNormalModule(nn.Module):
         log_std_init: float = 0.0,
         log_std_min: float = -5.0,
         log_std_max: float = 1.0,
+        project_log_std: bool = False,
     ):
         super().__init__()
         self.state_dependent_std = state_dependent_std
         self.log_std_min = float(log_std_min)
         self.log_std_max = float(log_std_max)
+        self.project_log_std = bool(project_log_std)
+        if not self.log_std_min < self.log_std_max:
+            raise ValueError("log_std_min must be smaller than log_std_max.")
+        if self.project_log_std and not self.log_std_min <= log_std_init <= self.log_std_max:
+            raise ValueError("Projected log_std_init must be inside its bounds.")
         if self.state_dependent_std:
             # NOTE: uses fc_mean for checkpoint compatibility with DiagGaussian
             self.fc_mean = nn.Linear(input_dim, output_dim * 2)
@@ -268,8 +296,12 @@ class TanhIndependentNormalModule(nn.Module):
             scale = self.scale_mapping(scale).clamp_min(self.scale_lb)
         else:
             loc = self.fc_mean(tensor)
-            log_std_clamped = self.log_std.clamp(self.log_std_min, self.log_std_max)
-            scale = self.scale_mapping(log_std_clamped).clamp_min(self.scale_lb)
+            # MAPPO projects the learnable parameter after optimization/loading.
+            # Other users retain the legacy forward-clamp behavior by default.
+            log_std = self.log_std if self.project_log_std else self.log_std.clamp(
+                self.log_std_min, self.log_std_max
+            )
+            scale = self.scale_mapping(log_std).clamp_min(self.scale_lb)
         return self.dist_cls(loc, scale)
 
 

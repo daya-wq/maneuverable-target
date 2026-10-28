@@ -1,0 +1,7 @@
+# Kinematic-consistency ablation; keep V2 and the running baseline unchanged.
+defaults:
+  - HideAndSeek70V2
+
+name: HideAndSeek
+trajectory_control:
+  reference_mode: acceleration_sequence

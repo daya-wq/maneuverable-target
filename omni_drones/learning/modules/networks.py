@@ -419,6 +419,144 @@ class CoopEntityAttentionEncoder(nn.Module):
             flat_tokens = self.token_norm(flat_tokens)
         encoded = self.transformer(flat_tokens, src_key_padding_mask=flat_mask)
         return encoded[:, 0, :].reshape(*batch_shape, -1)
+
+
+@register(ENCODERS_MAP)
+class CooperativeTrajectoryEncoder(nn.Module):
+    """Joint three-agent trajectory encoder used by the PPO actor.
+
+    The environment supplies raw history, the previous receding-horizon plan,
+    and raw GMM parameters.  This module keeps the full agent axis intact,
+    encodes the GMM once per environment, and returns one feature token for
+    every agent and future time step: ``[..., N, H, D]``.
+    """
+
+    consume_full_composite_spec = True
+    required_keys = {
+        "agent_history",
+        "current_pos",
+        "current_vel",
+        "prev_plan",
+        "prev_plan_mask",
+        "gmm_means",
+        "gmm_vars",
+        "gmm_weights",
+        "strategic_probs",
+    }
+
+    def __init__(self, input_spec: CompositeSpec, *, d_model: int = 128) -> None:
+        super().__init__()
+        missing = self.required_keys.difference(input_spec.keys())
+        if missing:
+            raise ValueError(
+                "CooperativeTrajectoryEncoder is missing observation keys: "
+                + ", ".join(sorted(missing))
+            )
+
+        from omni_drones.learning.predictor.gmm_encoder import (
+            GMMEncoderConfig,
+            GMMTrajectoryEncoder,
+        )
+        from omni_drones.learning.modules.cooperative_future import (
+            CooperativeFutureConfig,
+            CooperativeFutureTokenEncoder,
+        )
+
+        history_shape = input_spec["agent_history"].shape
+        gmm_shape = input_spec["gmm_means"].shape
+        plan_shape = input_spec["prev_plan"].shape
+        self.num_agents = int(history_shape[-3])
+        self.history_len = int(history_shape[-2])
+        self.history_dim = int(history_shape[-1])
+        self.num_modes = int(gmm_shape[-3])
+        self.num_strategic = int(input_spec["strategic_probs"].shape[-1])
+        self.pred_horizon = int(gmm_shape[-2])
+        self.prev_plan_dim = int(plan_shape[-1])
+        self.d_model = int(d_model)
+
+        gmm_cfg = GMMEncoderConfig(
+            num_modes=self.num_modes,
+            pred_horizon=self.pred_horizon,
+            d_model=self.d_model,
+        )
+        cooperative_cfg = CooperativeFutureConfig(
+            num_agents=self.num_agents,
+            num_modes=self.num_modes,
+            num_strategic=self.num_strategic,
+            history_len=self.history_len,
+            pred_horizon=self.pred_horizon,
+            history_dim=self.history_dim,
+            prev_plan_dim=self.prev_plan_dim,
+            d_model=self.d_model,
+        )
+        self.gmm_encoder = GMMTrajectoryEncoder(gmm_cfg)
+        self.cooperative_encoder = CooperativeFutureTokenEncoder(cooperative_cfg)
+        self.flight_context_encoder = None
+        if "flight_context" in input_spec.keys():
+            # Optional minimal physical context: arena-local position and world
+            # velocity. Zero initialization preserves old-checkpoint actions.
+            with torch.random.fork_rng(devices=[]):
+                self.flight_context_encoder = nn.Linear(6, self.d_model)
+            nn.init.zeros_(self.flight_context_encoder.weight)
+            nn.init.zeros_(self.flight_context_encoder.bias)
+
+        # make_ppo_actor uses these flags to preserve H as an action-event axis.
+        self.output_shape = torch.Size((self.pred_horizon, self.d_model))
+        self.preserve_time_axis = True
+        self.action_event_dims = 2
+
+    @staticmethod
+    def _flatten_leading(x: Tensor, trailing_dims: int):
+        leading_shape = x.shape[:-trailing_dims]
+        return x.reshape(-1, *x.shape[-trailing_dims:]), leading_shape
+
+    def forward(self, x: TensorDict) -> Tensor:
+        agent_history, leading_shape = self._flatten_leading(
+            x["agent_history"], trailing_dims=3
+        )
+        current_pos = x["current_pos"].reshape(-1, self.num_agents, 3)
+        current_vel = x["current_vel"].reshape(-1, self.num_agents, 3)
+        prev_plan = x["prev_plan"].reshape(
+            -1, self.num_agents, self.pred_horizon, self.prev_plan_dim
+        )
+        prev_plan_mask = x["prev_plan_mask"].reshape(
+            -1, self.num_agents, self.pred_horizon
+        )
+
+        # GMM tensors are shared target information duplicated along the agent
+        # observation axis. Encode only the first copy.
+        means = x["gmm_means"].reshape(
+            -1, self.num_agents, self.num_modes, self.pred_horizon, 3
+        )[:, 0]
+        vars_ = x["gmm_vars"].reshape(
+            -1, self.num_agents, self.num_modes, self.pred_horizon, 3
+        )[:, 0]
+        weights = x["gmm_weights"].reshape(
+            -1, self.num_agents, self.num_modes
+        )[:, 0]
+        strategic_probs = x["strategic_probs"].reshape(
+            -1, self.num_agents, self.num_strategic
+        )[:, 0]
+
+        encoded_gmm = self.gmm_encoder(means, vars_, weights)
+        cooperative = self.cooperative_encoder(
+            agent_history=agent_history,
+            current_pos=current_pos,
+            current_vel=current_vel,
+            prev_plan=prev_plan,
+            prev_plan_mask=prev_plan_mask,
+            gmm_mode_tokens=encoded_gmm["mode_tokens"],
+            gmm_point_tokens=encoded_gmm["point_tokens"],
+            gmm_weights=encoded_gmm["weights"],
+            strategic_probs=strategic_probs,
+            gmm_log_weights=encoded_gmm["log_weights"],
+        )["cooperative_future_tokens"]
+        if self.flight_context_encoder is not None:
+            context = x["flight_context"].reshape(-1, self.num_agents, 6)
+            cooperative = cooperative + self.flight_context_encoder(context).unsqueeze(-2)
+        return cooperative.reshape(
+            *leading_shape, self.num_agents, self.pred_horizon, self.d_model
+        )
     
 
 ################################## Vision Encoders ##################################

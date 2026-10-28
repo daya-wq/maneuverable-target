@@ -3,7 +3,7 @@ name: mappo
 # ppo
 train_every: 128
 num_minibatches: 16
-ppo_epochs: 2
+ppo_epochs: 1
 predictor:
   enabled: true
   lr: 0.0003
@@ -74,10 +74,10 @@ warmstart:
       - -3.688879
       - -2.995732
   kl_reg:
-    enabled: false
-    target_kl: 0.2
+    enabled: true
+    target_kl: 0.02
     coef: 0.0
-    hard_stop: false
+    hard_stop: true
   anchor:
     enabled: false
     coef_init: 0.0
@@ -90,12 +90,13 @@ share_actor: True
 critic_input: state # `obs` or `state`
 
 actor:
-  lr: 0.0001
+  # Verified with 512 envs x 128 steps, 16 minibatches and one PPO epoch.
+  lr: 0.000003
   lr_scheduler: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
   lr_scheduler_kwargs:
     T_0: 2000
     T_mult: 2
-    eta_min: 0.00001
+    eta_min: 0.0000003
   
   # mlp
   hidden_units: [256, 256, 256]
@@ -105,11 +106,16 @@ actor:
   gain: 0.01
 
   vision_encoder: MobileNetV3Small
-  attn_encoder: CoopEntityAttentionEncoder # self token + teammate entities + local cylinders
+  # Raw history + GMM + strategic intent -> cooperative future tokens.
+  # The stochastic head predicts 10 bounded relative-position/velocity knots.
+  attn_encoder: CooperativeTrajectoryEncoder
   use_orthogonal: true
 
   tanh: true
-  log_std_init: -1.0
+  # Learn one log_std per output channel; project only after optimization/load.
+  # sigma starts at exp(-1.5) ~= 0.223 in the pre-tanh action coordinates.
+  project_log_std: true
+  log_std_init: -1.5
   log_std_min: -3.0
   log_std_max: 0.0
 
@@ -126,12 +132,12 @@ critic:
     kwargs: 
       beta: 0.995
 
-  lr: 0.0005
+  lr: 0.0001
   lr_scheduler: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
   lr_scheduler_kwargs:
     T_0: 1000
     T_mult: 2
-    eta_min: 0.00005
+    eta_min: 0.00001
 
   # mlp
   hidden_units: [256, 256, 256]

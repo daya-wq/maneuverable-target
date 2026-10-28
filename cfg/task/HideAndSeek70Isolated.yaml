@@ -1,0 +1,7 @@
+# Same native three-control actor; partial resets must not advance live envs.
+defaults:
+  - HideAndSeek70Consistent
+
+name: HideAndSeek
+reset_profile:
+  advance_physics_on_reset: false

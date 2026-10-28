@@ -8,7 +8,6 @@ from .dual_intent_gmm_predictor import (
 from .gmm_encoder import (
     GMMEncoderConfig,
     GMMTrajectoryEncoder,
-    GMMCrossAttention,
 )
 
 __all__ = [
@@ -18,5 +17,4 @@ __all__ = [
     "StrategicGMMLoss",
     "GMMEncoderConfig",
     "GMMTrajectoryEncoder",
-    "GMMCrossAttention",
 ]

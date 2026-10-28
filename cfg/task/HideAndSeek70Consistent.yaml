@@ -1,0 +1,8 @@
+# Native three-control trajectory head: a bounded acceleration sequence is
+# integrated to the same 10 position/velocity waypoints at 0.05 s intervals.
+defaults:
+  - HideAndSeek70V3
+
+name: HideAndSeek
+trajectory_control:
+  action_reference_dim: 3

@@ -2,6 +2,8 @@ import logging
 import math
 import os
 import time
+import importlib
+import json
 
 import hydra
 import torch
@@ -72,6 +74,121 @@ class Every:
 
 from typing import Sequence
 from tensordict import TensorDictBase
+
+
+# TensorBoard is a compact training dashboard, not a dump of every diagnostic
+# produced by the trainer.  W&B and the console still receive the full `info`
+# dictionary; this allowlist only controls which scalar curves TensorBoard
+# displays for new runs.
+TENSORBOARD_SCALAR_TAGS = frozenset(
+    {
+        # Step reference.
+        "train/update",
+        "env_frames",
+        # Sampling and end-to-end training speed.
+        "rollout_fps",
+        "system/rollout_wall_seconds",
+        "system/policy_update_seconds",
+        "system/effective_env_frames_per_second",
+        "system/torch_peak_memory_allocated_gib",
+        # PPO actor stability and losses.
+        "drone/approx_kl",
+        "drone/ratio_mean",
+        "drone/ratio_std",
+        "drone/ratio_clip_fraction",
+        "drone/policy_loss",
+        "drone/pv_consistency_loss",
+        "drone/value_loss",
+        # Advantage and value learning.
+        "drone/advantages_mean",
+        "drone/advantages_std",
+        "drone/explained_var",
+        "drone/value_abs_error",
+        "drone/value_clip_fraction",
+        "drone/returns_mean",
+        "drone/bootstrap_value_mean",
+        # Online strategic-intent and GMM trajectory predictor.
+        "drone/predictor_loss_total",
+        "drone/predictor_loss_strategic",
+        "drone/predictor_loss_gmm_nll",
+        "drone/predictor_strategic_accuracy",
+        "drone/predictor_minADE",
+        "drone/predictor_FDE",
+        "drone/predictor_gmm_weight_entropy",
+        "drone/predictor_valid_windows",
+        # Completed-episode reward components.
+        "train/stats.m3_progress",
+        "train/stats.m3_safety_pair",
+        "train/stats.m3_safety_env",
+        "train/stats.m3_control",
+        "train/stats.m3_time",
+        "train/stats.m3_terminal",
+        "train/stats.m3_dense_raw",
+        "train/stats.m3_reward",
+        "train/stats.return",
+        # Completed-episode termination distribution and context.
+        "train/episodes_completed",
+        "train/stats.termination_capture",
+        "train/stats.termination_target_goal",
+        "train/stats.termination_ground_collision",
+        "train/stats.termination_drone_collision",
+        "train/stats.termination_timeout_near_miss",
+        "train/stats.termination_timeout_no_close",
+        "train/stats.termination_out_of_bounds",
+        "train/stats.termination_landed",
+        "train/stats.episode_min_target_distance",
+        "train/stats.episode_duration_s",
+        "train/stats.target_maneuver_switches",
+        "train/stats.target_tactical_switches",
+        "safety/pursuer_motor_thrust_fraction_max",
+        "safety/target_motor_thrust_fraction_max",
+        # Target motion, capability randomisation and mode coverage.
+        "target/speed_mps_mean",
+        "target/speed_mps_p95",
+        "target/realized_accel_mps2_mean",
+        "target/realized_accel_mps2_p95",
+        "target/turn_rate_deg_s_mean",
+        "target/turn_rate_deg_s_p95",
+        "target/command_accel_mps2_p95",
+        "target/sampled_max_speed_mps_mean",
+        "target/sampled_max_speed_mps_max",
+        "target/sampled_max_accel_mps2_mean",
+        "target/sampled_max_accel_mps2_max",
+        "target/sampled_initial_speed_mps_max",
+        "target/tactical_switches_per_s",
+        "target/maneuver_switches_per_s",
+        "target/tactical_0_fraction",
+        "target/tactical_1_fraction",
+        "target/tactical_2_fraction",
+        "target/tactical_3_fraction",
+        "target/maneuver_0_fraction",
+        "target/maneuver_1_fraction",
+        "target/maneuver_2_fraction",
+        "target/maneuver_3_fraction",
+        "target/maneuver_4_fraction",
+        "target/maneuver_5_fraction",
+        "target/maneuver_6_fraction",
+        "target/maneuver_7_fraction",
+        "target/maneuver_8_fraction",
+    }
+)
+
+
+def should_write_tensorboard_scalar(tag: str) -> bool:
+    """Return whether a scalar belongs in the compact TensorBoard dashboard."""
+    return tag in TENSORBOARD_SCALAR_TAGS
+
+
+def tensorboard_display_tag(tag: str) -> str:
+    """Expose descriptive labels instead of historical reward-version prefixes."""
+    if tag.startswith('train/stats.m3_'):
+        return 'reward/' + tag.split('m3_', 1)[1]
+    if tag == 'train/stats.return': return 'reward/episode_return'
+    if tag.startswith('train/stats.termination_'):
+        return 'termination/' + tag.split('termination_', 1)[1]
+    if tag.startswith('drone/predictor_'):
+        return 'prediction/' + tag.split('predictor_', 1)[1]
+    return tag
 
 
 def checkpoint_actor_rnn_hidden_size(state_dict):
@@ -148,19 +265,32 @@ class EpisodeStats:
         )
         if done_or_truncated.any():
             done_or_truncated = done_or_truncated.squeeze(-1) # [env_num, 1, 1]
-            self._episodes += done_or_truncated.sum().item()
-            self._stats.extend(
-                # [env, n, 1]
-                tensordict.select(*self.in_keys)[:, 1:][done_or_truncated[:, :-1]].clone().unbind(0)
-            )
+            # Keep completed episodes as one batched TensorDict.  Unbinding here
+            # creates thousands of Python TensorDict objects (one per episode)
+            # and made 1024-env logging take almost five minutes per update.
+            # Concatenating a few rollout-level batches in pop() is equivalent
+            # while preserving vectorised TensorDict operations.
+            # Terminal statistics belong to the same transition's next state.
+            # Using current[:, 1:] drops events at the rollout boundary and
+            # can read the newly-reset episode instead of the terminal one.
+            selected = tensordict.get("next").select(*self.in_keys)
+            completed = selected[done_or_truncated].clone()
+            self._stats.append(completed)
+            self._episodes += int(completed.batch_size[0])
     
     def pop(self):
-        stats: TensorDictBase = torch.stack(self._stats).to_tensordict()
+        if not self._stats:
+            raise RuntimeError("EpisodeStats.pop() called without completed episodes")
+        if len(self._stats) == 1:
+            stats: TensorDictBase = self._stats[0]
+        else:
+            stats = torch.cat(self._stats, dim=0).to_tensordict()
         self._stats.clear()
+        self._episodes = 0
         return stats
 
     def __len__(self):
-        return len(self._stats)
+        return self._episodes
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -168,6 +298,113 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+@torch.no_grad()
+def summarize_target_maneuvers(data_td: TensorDictBase, step_dt: float):
+    """Summarize commanded and realised target motion over one rollout.
+
+    Finite differences that cross an automatic episode reset are excluded.
+    The realised acceleration/turn metrics are evaluated at the 20 Hz planner
+    samples; command acceleration is the latest 100 Hz controller command.
+    """
+    state_key = ("next", "info", "target_state")
+    if state_key not in data_td.keys(True, True):
+        return {}
+
+    def finite_flat(value):
+        value = value.reshape(-1).float()
+        return value[torch.isfinite(value)]
+
+    def add_distribution(output, prefix, value):
+        value = finite_flat(value)
+        if value.numel() == 0:
+            return
+        output[f"target/{prefix}_mean"] = value.mean().item()
+        output[f"target/{prefix}_p95"] = torch.quantile(value, 0.95).item()
+        output[f"target/{prefix}_max"] = value.max().item()
+
+    dt = max(float(step_dt), 1e-6)
+    state = data_td.get(state_key).float()
+    while state.ndim > 3 and state.shape[-2] == 1:
+        state = state.squeeze(-2)
+    if state.ndim != 3 or state.shape[1] < 2:
+        return {}
+
+    vel = state[..., 3:6]
+    speed = torch.linalg.vector_norm(vel, dim=-1)
+    done = data_td.get(("next", "done"), None)
+    if done is None:
+        valid_pair = torch.ones_like(speed[:, 1:], dtype=torch.bool)
+    else:
+        done = done.bool()
+        while done.ndim > 2:
+            done = done.squeeze(-1)
+        # Pair (t-1,t) crosses a reset when the previous sample terminated.
+        valid_pair = ~done[:, :-1]
+
+    delta_v = (vel[:, 1:] - vel[:, :-1]) / dt
+    actual_acc = torch.linalg.vector_norm(delta_v, dim=-1)
+    actual_acc = actual_acc[valid_pair]
+
+    v0 = vel[:, :-1]
+    v1 = vel[:, 1:]
+    s0 = torch.linalg.vector_norm(v0, dim=-1)
+    s1 = torch.linalg.vector_norm(v1, dim=-1)
+    turn_valid = valid_pair & (s0 > 0.25) & (s1 > 0.25)
+    cosine = (v0 * v1).sum(-1) / (s0 * s1).clamp_min(1e-6)
+    turn_rate_deg_s = torch.rad2deg(torch.acos(cosine.clamp(-1.0, 1.0))) / dt
+    turn_rate_deg_s = turn_rate_deg_s[turn_valid]
+
+    output = {}
+    for key_name, prefix in (("pursuer_motor_fraction", "pursuer"), ("target_motor_fraction", "target")):
+        key = ("next", "info", key_name)
+        if key in data_td.keys(True, True):
+            output[f"safety/{prefix}_motor_thrust_fraction_max"] = data_td.get(key).max().item()
+    add_distribution(output, "speed_mps", speed)
+    add_distribution(output, "realized_accel_mps2", actual_acc)
+    add_distribution(output, "turn_rate_deg_s", turn_rate_deg_s)
+
+    acc_key = ("next", "info", "target_acc_cmd")
+    if acc_key in data_td.keys(True, True):
+        acc_cmd = data_td.get(acc_key).float()
+        add_distribution(
+            output,
+            "command_accel_mps2",
+            torch.linalg.vector_norm(acc_cmd, dim=-1),
+        )
+
+    for key_name, metric_name in (
+        ("target_max_speed", "sampled_max_speed_mps"),
+        ("target_max_accel", "sampled_max_accel_mps2"),
+        ("target_initial_speed", "sampled_initial_speed_mps"),
+    ):
+        key = ("next", "info", key_name)
+        if key in data_td.keys(True, True):
+            add_distribution(output, metric_name, data_td.get(key).float())
+
+    for key_name, metric_name, count in (
+        ("target_tactical_intent", "tactical", 4),
+        ("target_maneuver_id", "maneuver", 9),
+    ):
+        key = ("next", "info", key_name)
+        if key not in data_td.keys(True, True):
+            continue
+        ids = data_td.get(key).long()
+        while ids.ndim > 2:
+            ids = ids.squeeze(-1)
+        switch = (ids[:, 1:] != ids[:, :-1]) & valid_pair
+        valid_time = valid_pair.sum().clamp_min(1).float() * dt
+        output[f"target/{metric_name}_switches_per_s"] = (
+            switch.sum().float() / valid_time
+        ).item()
+        valid_ids = ids[:, 1:][valid_pair]
+        if valid_ids.numel() > 0:
+            for idx in range(count):
+                output[f"target/{metric_name}_{idx}_fraction"] = (
+                    valid_ids == idx
+                ).float().mean().item()
+    return output
 
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
 def main(cfg):
@@ -191,10 +428,40 @@ def main(cfg):
     # TensorBoard writer — run name is the timestamp
     tb_log_dir = os.path.join(project_root, "runs", f"{cfg.task.name}_{time_str}")
     tb_writer = SummaryWriter(log_dir=tb_log_dir)
+    if cfg.task.get("flight_capability", None) and not cfg.get("evaluate_only", False) and not cfg.get("diagnostic_run", False) and int(cfg.get("max_iters", -1)) > 20:
+        experiment_tb = os.path.join(project_root, "results", "overnight70_20261021", "tensorboard")
+        os.makedirs(experiment_tb, exist_ok=True)
+        label = ("attempt_%02d" % int(cfg.experiment_attempt)) if cfg.get("experiment_attempt", None) is not None else "train_" + time_str
+        link = os.path.join(experiment_tb, label)
+        if not os.path.lexists(link):
+            os.symlink(tb_log_dir, link, target_is_directory=True)
+    tb_writer.add_text(
+        "run/config",
+        "```yaml\n" + OmegaConf.to_yaml(cfg) + "\n```",
+        global_step=0,
+    )
+    tb_writer.add_text(
+        "run/step_definition",
+        "TensorBoard global_step is the completed PPO update count. "
+        "Use env_frames to recover the cumulative simulator sample count.",
+        global_step=0,
+    )
     logging.info(f"TensorBoard log dir: {tb_log_dir}")
 
-    from omni_drones.envs import HideAndSeek, HideAndSeek_envgen, HideAndSeek_deploy  # noqa: F401
     from omni_drones.envs.isaac_env import IsaacEnv
+    task_modules = {
+        "HideAndSeek": "omni_drones.envs.hide_and_seek.hideandseek",
+        "HideAndSeek_envgen": "omni_drones.envs.hide_and_seek.hideandseek_envgen",
+        "HideAndSeek_deploy": "omni_drones.envs.hide_and_seek.hideandseek_deploy",
+    }
+    task_module = task_modules.get(str(cfg.task.name))
+    if task_module is None:
+        raise KeyError(
+            f"Unknown task {cfg.task.name!r}; available tasks: {sorted(task_modules)}"
+        )
+    # Import only the selected task.  Retired dependencies in a legacy task
+    # must not prevent the active HideAndSeek mainline from starting.
+    importlib.import_module(task_module)
     algos = {
         "ppo": PPOPolicy,
         "ppo_adaptive": PPOAdaptivePolicy,
@@ -292,8 +559,8 @@ def main(cfg):
         cfg.algo,
         agent_spec=agent_spec,
         device=cfg.sim.device,
-        predictor_net=getattr(base_env, "ot_predictor", None),
-        predictor_stride=getattr(base_env, "ot_prediction_stride", 1),
+        predictor_net=getattr(base_env, "predictor", None),
+        predictor_stride=getattr(base_env, "prediction_stride", 1),
     )
 
     frames_per_batch = env.num_envs * int(cfg.algo.train_every)
@@ -745,6 +1012,22 @@ def main(cfg):
         seed: int=0,
         progress: float=1.0,
     ):
+        if cfg.get("trajectory_evaluation", False):
+            from overnight_evaluation import evaluate_with_trajectories
+            repeats = int(cfg.get("evaluation_repeats", 1))
+            output_root = cfg.get("evaluation_output", os.path.join(run_output_dir, "evaluation"))
+            for repeat in range(repeats):
+                output_dir = os.path.join(output_root, "round_%02d" % repeat) if repeats > 1 else output_root
+                result = evaluate_with_trajectories(
+                    env, base_env, policy, output_dir,
+                    seed=int(cfg.get("evaluation_seed", 20261022)),
+                    rule_baseline=bool(cfg.get("rule_baseline", False)),
+                    hover_test=bool(cfg.get("hover_test", False)),
+                    stochastic=bool(cfg.get("evaluation_stochastic", False)),
+                    reset_finished=bool(cfg.get("evaluation_reset_finished", False)),
+                    reset_integrity_audit=bool(cfg.get("reset_integrity_audit", False)),
+                )
+            return result
         frames = []
         record_eval_video = bool(cfg.get("record_eval_video", False))
 
@@ -770,10 +1053,7 @@ def main(cfg):
 
         td = env.reset()
         n_envs = int(base_env.num_envs)
-        n_agents = int(base_env.drone.n)
         done_mask = torch.zeros(n_envs, dtype=torch.bool, device=base_env.device)
-        action_dim = int(base_env.action_spec[("agents", "action")].shape[-1])
-        zero_action = torch.zeros(n_envs, n_agents, action_dim, device=base_env.device)
         eval_stats = []
         latest_stats = None
         for step_idx in range(base_env.max_episode_length):
@@ -781,7 +1061,7 @@ def main(cfg):
                 record_frame()
             action_td = policy(td, deterministic=True)
             if done_mask.any() and ("agents", "action") in action_td.keys(True):
-                action_td["agents", "action"][done_mask] = zero_action[done_mask]
+                action_td["agents", "action"][done_mask] = 0.0
             td = env.step(action_td)
             td_next = td.get("next")
             latest_stats = td_next.get("stats")
@@ -821,30 +1101,116 @@ def main(cfg):
         
         return info
 
+    if cfg.get("evaluate_only", False):
+        if cfg.get("collector_audit", False):
+            from collector_audit70 import audit_collector
+            audit = audit_collector(
+                collector, env, base_env, policy, cfg.evaluation_output,
+                batches=int(cfg.get("collector_audit_batches", 16)),
+            )
+            logging.info("Frozen collector audit: %s", audit)
+        else:
+            logging.info("Evaluation only: %s", evaluate())
+        tb_writer.close()
+        simulation_app.close()
+        return
+
+    OmegaConf.save(cfg, os.path.join(run_output_dir, "config.yaml"))
+    progress_path = os.path.join(run_output_dir, "progress.jsonl")
     pbar = tqdm(collector)
     env.train()
     base_env.train()
     fps = []
+    rollout_started_at = time.perf_counter()
     for i, data in enumerate(pbar):
+        rollout_wall_seconds = time.perf_counter() - rollout_started_at
+        postprocess_started_at = time.perf_counter()
+        update_step = i + 1
         # fps.append(collector._fps)
         data_td = data.to_tensordict()
-        info = {"env_frames": collector._frames, "rollout_fps": collector._fps}
+        if cfg.get("sampling_diagnostic", False):
+            sampled = data_td["agents", "action"][..., 0, :].detach()
+            physical = data_td["next", "info", "drone_state"].detach()
+            diagnostic = dict(
+                update=update_step,
+                first_action_mean=sampled.mean(dim=(0, 1, 2)).cpu().tolist(),
+                first_action_std=sampled.std(dim=(0, 1, 2), unbiased=False).cpu().tolist(),
+                height_mean=float(physical[..., 2].mean()),
+                height_min=float(physical[..., 2].min()),
+                height_max=float(physical[..., 2].max()),
+                vertical_speed_mean=float(physical[..., 9].mean()),
+            )
+            with open(os.path.join(run_output_dir, "sampling_diagnostic.jsonl"), "a") as diagnostic_file:
+                diagnostic_file.write(json.dumps(diagnostic) + "\n")
+        info = {
+            "train/update": update_step,
+            "env_frames": collector._frames,
+            "rollout_fps": collector._fps,
+            "system/rollout_wall_seconds": rollout_wall_seconds,
+        }
+        target_metrics_started_at = time.perf_counter()
+        info.update(
+            summarize_target_maneuvers(
+                data_td,
+                step_dt=float(getattr(base_env, "trajectory_plan_dt", 0.05)),
+            )
+        )
+        info["system/target_metrics_seconds"] = (
+            time.perf_counter() - target_metrics_started_at
+        )
+
+        episode_stats_started_at = time.perf_counter()
         episode_stats(data_td)
         stats = {}
-
-        if len(episode_stats) >= base_env.num_envs:
+        completed_episodes = len(episode_stats)
+        info["train/episodes_completed"] = completed_episodes
+        if completed_episodes > 0:
+            completed_stats = episode_stats.pop()
             stats = {
-                "train/" + (".".join(k) if isinstance(k, tuple) else k): torch.mean(v).item() 
-                for k, v in episode_stats.pop().items(True, True)
+                "train/" + (".".join(k) if isinstance(k, tuple) else k): torch.mean(v.float()).item()
+                for k, v in completed_stats.items(True, True)
+                if not (
+                    (isinstance(k, tuple) and k[-1] == "termination_reason")
+                    or k == "termination_reason"
+                )
             }
             info.update(stats)
+        info["system/episode_stats_seconds"] = (
+            time.perf_counter() - episode_stats_started_at
+        )
 
         info.update(update_entropy_schedule(collector._frames, stats))
         info.update(update_warmstart_controls(collector._frames))
 
+        update_start = time.perf_counter()
         info.update(policy.train_op(data_td))
+        info["system/policy_update_seconds"] = time.perf_counter() - update_start
+        info["system/postprocess_and_update_seconds"] = (
+            time.perf_counter() - postprocess_started_at
+        )
+        update_core_seconds = (
+            rollout_wall_seconds + info["system/postprocess_and_update_seconds"]
+        )
+        info["system/effective_env_frames_per_second"] = (
+            float(frames_per_batch) / max(update_core_seconds, 1e-9)
+        )
+        if torch.cuda.is_available():
+            cuda_device = torch.cuda.current_device()
+            gib = float(1024 ** 3)
+            info["system/torch_memory_allocated_gib"] = (
+                torch.cuda.memory_allocated(cuda_device) / gib
+            )
+            info["system/torch_memory_reserved_gib"] = (
+                torch.cuda.memory_reserved(cuda_device) / gib
+            )
+            info["system/torch_peak_memory_allocated_gib"] = (
+                torch.cuda.max_memory_allocated(cuda_device) / gib
+            )
+            info["system/torch_peak_memory_reserved_gib"] = (
+                torch.cuda.max_memory_reserved(cuda_device) / gib
+            )
 
-        if eval_interval > 0 and i % eval_interval == 0:
+        if eval_interval > 0 and update_step % eval_interval == 0:
             logging.info(f"Eval at {collector._frames} steps.")
             eval_info = evaluate(progress=training_progress(collector._frames, i))
             info.update(eval_info)
@@ -853,19 +1219,27 @@ def main(cfg):
             env.train()
             base_env.train()
 
-        if save_interval > 0 and i % save_interval == 0:
+        if save_interval > 0 and update_step % save_interval == 0:
             if hasattr(policy, "state_dict"):
                 ckpt_path = os.path.join(run_output_dir, f"checkpoint_{collector._frames}.pt")
                 logging.info(f"Save checkpoint to {str(ckpt_path)}")
                 torch.save(policy.state_dict(), ckpt_path)
 
         run.log(info)
-        # Log scalars to TensorBoard
-        global_step = collector._frames
+        # TensorBoard uses PPO update count on the x-axis.  env_frames remains
+        # available as a scalar for sample-efficiency comparisons.
+        global_step = update_step
         for k, v in info.items():
-            if isinstance(v, (int, float)):
-                tb_writer.add_scalar(k, v, global_step)
+            if isinstance(v, (int, float)) and should_write_tensorboard_scalar(k):
+                tb_writer.add_scalar(tensorboard_display_tag(k), v, global_step)
         tb_writer.flush()
+        compact_info = {k: float(v) for k, v in info.items()
+                        if isinstance(v, (int, float)) and (
+                            should_write_tensorboard_scalar(k)
+                            or k in ("drone/actor_update_skipped", "drone/entropy"))}
+        compact_info.update(wall_time=time.time(), run_output_dir=run_output_dir, tb_log_dir=tb_log_dir)
+        with open(progress_path, "a") as progress_file:
+            progress_file.write(json.dumps(compact_info) + "\n")
         print(OmegaConf.to_yaml({k: v for k, v in info.items() if isinstance(v, float)}))
 
         pbar.set_postfix({
@@ -875,6 +1249,10 @@ def main(cfg):
 
         if hasattr(base_env, "set_training_progress"):
             base_env.set_training_progress(training_progress(collector._frames, i))
+
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats(torch.cuda.current_device())
+        rollout_started_at = time.perf_counter()
 
         if max_iters > 0 and i >= max_iters - 1:
             break 

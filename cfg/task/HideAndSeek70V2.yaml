@@ -1,0 +1,7 @@
+# Controlled ablation: preserve the 70% scene, add physical floor braking only.
+defaults:
+  - HideAndSeek70
+
+name: HideAndSeek
+trajectory_control:
+  floor_use_braking_distance: true

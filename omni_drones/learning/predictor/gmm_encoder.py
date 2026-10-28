@@ -23,8 +23,7 @@ GMM 轨迹编码器 — GMMTrajectoryEncoder
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
@@ -296,125 +295,6 @@ class GMMTrajectoryEncoder(nn.Module):
             "weight_gate":   alpha_weight,          # scalar
         }
 
-
-# ---------------------------------------------------------------------------
-# Actor 侧的交叉注意力模块
-# ---------------------------------------------------------------------------
-
-class GMMCrossAttention(nn.Module):
-    """
-    无人机查询 token 跨 K 条目标轨迹做交叉注意力。
-
-    参数
-    ----
-    d_model : int   特征维度（应与 GMMEncoderConfig.d_model 一致）
-    nhead   : int   注意力头数
-    cfg     : GMMEncoderConfig  用于读取 weight_prior_scale 等
-
-    使用方式
-    --------
-    # agent_queries: [B, N, H, d_model]  N=追捕无人机数，H=时间步
-    # encoded: GMMTrajectoryEncoder 的输出字典
-
-    target_context = gmm_cross_attn(agent_queries, encoded)
-    # target_context: [B, N, H, d_model]  可加回 agent_queries 做残差
-    """
-
-    def __init__(
-        self,
-        d_model: int = 128,
-        nhead: int = 4,
-        cfg: Optional[GMMEncoderConfig] = None,
-    ) -> None:
-        super().__init__()
-        self.d_model    = d_model
-        self.nhead      = nhead
-        self.head_dim   = d_model // nhead
-        self.cfg        = cfg or GMMEncoderConfig()
-
-        # 将 mode_tokens 广播到每个时间点（供构造 Key/Value 时使用）
-        self.mode_to_point = nn.Linear(d_model, d_model, bias=False)
-
-        # 交叉注意力的 Q / K / V 投影
-        self.q_proj = nn.Linear(d_model, d_model, bias=False)
-        self.k_proj = nn.Linear(d_model, d_model, bias=False)
-        self.v_proj = nn.Linear(d_model, d_model, bias=False)
-        self.out_proj = nn.Linear(d_model, d_model, bias=False)
-
-        self.norm = nn.LayerNorm(d_model)
-
-        self._reset_parameters()
-
-    def _reset_parameters(self):
-        nn.init.xavier_uniform_(self.q_proj.weight)
-        nn.init.xavier_uniform_(self.k_proj.weight)
-        nn.init.xavier_uniform_(self.v_proj.weight)
-        nn.init.zeros_(self.out_proj.weight)  # 残差初始为零，稳定训练
-
-    def forward(
-        self,
-        agent_queries: torch.Tensor,          # [B, N, H, d_model]
-        encoded_gmm: Dict[str, torch.Tensor], # GMMTrajectoryEncoder 的输出
-    ) -> torch.Tensor:
-        """
-        返回 [B, N, H, d_model]，可直接与 agent_queries 做残差相加。
-        """
-        B, N, H, dm = agent_queries.shape
-        mode_tokens  = encoded_gmm["mode_tokens"]   # [B, K, dm]
-        point_tokens = encoded_gmm["point_tokens"]  # [B, K, H, dm]
-        log_weights  = encoded_gmm["log_weights"]   # [B, K]
-
-        # ── 构造 Key/Value：点级 token + 轨迹全局语义 ────────────────
-        # mode_broadcast: [B, K, 1, dm] → [B, K, H, dm]
-        mode_broadcast = self.mode_to_point(mode_tokens).unsqueeze(2)  # [B, K, 1, dm]
-        kv_context = point_tokens + mode_broadcast                     # [B, K, H, dm]
-
-        # ── 调整维度便于多头注意力运算 ────────────────────────────────
-        # queries: [B, H, N, dm]
-        # keys:    [B, H, K, dm]
-        q = self.q_proj(agent_queries).permute(0, 2, 1, 3)   # [B, H, N, dm]
-        k = self.k_proj(kv_context).permute(0, 2, 1, 3)      # [B, H, K, dm]
-        v = self.v_proj(kv_context).permute(0, 2, 1, 3)      # [B, H, K, dm]
-
-        # 多头拆分: [B, H, N/K, nhead, head_dim]
-        def split_heads(x):  # x: [B, H, n, dm]
-            b_, h_, n_, _ = x.shape
-            return x.reshape(b_, h_, n_, self.nhead, self.head_dim).transpose(2, 3)
-            # → [B, H, nhead, n, head_dim]
-
-        q = split_heads(q)   # [B, H, nhead, N, head_dim]
-        k = split_heads(k)   # [B, H, nhead, K, head_dim]
-        v = split_heads(v)   # [B, H, nhead, K, head_dim]
-
-        # ── 计算 attention scores ─────────────────────────────────────
-        # scores: [B, H, nhead, N, K]
-        scores = torch.einsum("bhnqd,bhnkd->bhnqk", q, k) / math.sqrt(self.head_dim)
-
-        # ── 注入权重先验（log π_k）────────────────────────────────────
-        if self.cfg.use_weight_attention_bias:
-            # log_weights: [B, K] → [B, 1, 1, 1, K]
-            weight_bias = (
-                self.cfg.weight_prior_scale
-                * log_weights[:, None, None, None, :]
-            )
-            scores = scores + weight_bias                                  # broadcast
-
-        attn = torch.softmax(scores, dim=-1)                               # [B, H, nhead, N, K]
-
-        # ── 加权聚合 ─────────────────────────────────────────────────
-        context = torch.einsum("bhnqk,bhnkd->bhnqd", attn, v)             # [B, H, nhead, N, head_dim]
-
-        # 合并多头: [B, H, nhead, N, head_dim] → [B, H, N, dm]
-        context = context.transpose(2, 3).contiguous()                     # [B, H, N, nhead, head_dim]
-        context = context.reshape(B, H, N, dm)
-        # 恢复 → [B, N, H, dm]
-        context = context.permute(0, 2, 1, 3).contiguous()
-
-        # 输出投影 + LayerNorm（残差由调用方处理）
-        out = self.norm(self.out_proj(context))
-        return out                                                         # [B, N, H, dm]
-
-
 # ---------------------------------------------------------------------------
 # 单元测试（直接 python -m 运行）
 # ---------------------------------------------------------------------------
@@ -487,15 +367,7 @@ if __name__ == "__main__":
     print(f"[INFO] 方差敏感性: mode1 token 最大差={pt_diff_mode1:.4f}, mode0 变化={pt_diff_mode0:.4f}")
     print("[PASS] 方差敏感性测试")
 
-    # ── 5. GMMCrossAttention 测试 ─────────────────────────────────────
-    cross_attn = GMMCrossAttention(d_model=cfg.d_model, nhead=cfg.nhead, cfg=cfg).to(device)
-    N = 3  # 3 架追捕无人机
-    agent_queries = torch.randn(B, N, H, cfg.d_model, device=device)
-    ctx = cross_attn(agent_queries, out)
-    assert ctx.shape == (B, N, H, cfg.d_model), f"cross_attn 输出形状错误: {ctx.shape}"
-    print("[PASS] GMMCrossAttention 形状测试")
-
-    # ── 6. 梯度测试（编码器有梯度，输入无梯度） ────────────────────────
+    # ── 5. 梯度测试（编码器有梯度，输入无梯度） ────────────────────────
     means_detach   = means.clone().requires_grad_(False)
     vars_detach    = vars_.clone().requires_grad_(False)
     weights_detach = weights.clone().requires_grad_(False)
@@ -514,5 +386,3 @@ if __name__ == "__main__":
     print("所有测试通过 ✓")
     n_params = sum(p.numel() for p in encoder.parameters())
     print(f"GMMTrajectoryEncoder 参数量: {n_params:,}")
-    n_params_ca = sum(p.numel() for p in cross_attn.parameters())
-    print(f"GMMCrossAttention 参数量: {n_params_ca:,}")

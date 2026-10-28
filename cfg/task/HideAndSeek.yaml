@@ -6,15 +6,16 @@ defaults:
   - /base/sim_base@_here_
 
 env:
-  num_envs: 100
-  max_episode_length: 1200
+  num_envs: 512
+  # One environment step is one 0.05 s planner interval (20 Hz).
+  # 240 planner steps preserve the former 12 s physical episode duration.
+  max_episode_length: 240
 
 drone_model: Crazyflie
 force_sensor: false
 time_encoding: true
 
 action_transform: none
-guidance_mode: ot_residual
 
 # exp
 max_agents: 4
@@ -26,82 +27,46 @@ use_eval: 1 # eval/training both use the front_box random reset when configured 
 scenario_flag: 'goal_defense'
 use_role_encoding: false
 
-# TP net param
+# Prediction history and horizon
 history_step: 10
 future_predcition_step: 10
 window_step: 1
 
-ot_guidance:
-  enabled: true
-  predictor_checkpoint: null
-  predictor_obs_dim: 30
-  train_predictor: true
-  predictor_guidance_warmup_updates: 20
+prediction:
+  checkpoint: null
+  obs_dim: 30
+  train_online: true
   prediction_horizon: 10
-  dt_pred: 0.05
-  sinkhorn_iters: 24
-  sinkhorn_epsilon: 2.0
-  block_distance: 0.45
-  goal_distance: 0.55
-  evade_forward: 0.35
-  evade_side: 0.55
-  kp: 5.0
-  kv: 2.0
-  base_accel_limit: 6.0
-  residual_accel_limit: 1.5
-  residual_warmup_progress: 0.25
-  residual_warmup_min_scale: 0.15
-  pursuer_accel_limit: 8.0
-  pursuer_horizontal_accel_limit: 5.0
-  pursuer_vertical_accel_limit: 6.5
-  pursuer_max_tilt_deg: 50.0
-  pursuer_rate_fraction: 1.0
-  pursuer_yaw_heading_blend: 0.0
-  pursuer_floor_barrier_height: 0.90
-  pursuer_floor_hard_z: 0.30
-  pursuer_floor_target_margin: 0.10
-  pursuer_floor_prediction_time: 0.30
-  pursuer_floor_recovery_margin: 0.65
-  pursuer_floor_barrier_max_accel: 5.5
-  pursuer_floor_xy_scale_min: 0.20
-  pursuer_floor_barrier_gain: 12.0
-  pursuer_floor_barrier_damping: 5.0
-  reward_coef: 0.20
-  ref_coef: 0.15
-  mode_coef: 0.15
-  line_coef: 0.20
-  variance_weight_scale: 1.0
-  variance_weight_floor: 0.10
-  min_ref_z: 0.90
-  hard_floor_z: 0.30
-  low_target_ref_margin: 0.10
-  traj_mass_base: 0.35
-  traj_mass_far: 0.15
-  traj_mass_close: 0.45
-  channel_forward_fraction: 0.78
-  channel_min_forward: 2.20
-  channel_lateral_spread: 0.65
-  channel_mass_base: 0.60
-  channel_mass_far: 2.40
-  channel_mass_goal_priority: 2.20
-  channel_mass_goal_sprint: 3.00
-  ref_forward_floor: 1.80
-  ref_lateral_spread: 0.65
-  ref_channel_blend: 0.70
-  ref_lateral_blend: 0.90
-  ref_min_separation: 0.85
-  ref_separation_gain: 0.70
-  ref_separation_iters: 3
-  terminal_forward_min: 0.12
+  dt: 0.05
+
+trajectory_control:
+  plan_dt: 0.05
+  position_gain: 8.0
+  velocity_gain: 4.0
+  accel_limit: 8.0
+  horizontal_accel_limit: 5.0
+  vertical_accel_limit: 6.5
+  max_tilt_deg: 50.0
+  rate_fraction: 1.0
+  yaw_heading_blend: 0.0
+  floor_barrier_height: 0.90
+  floor_hard_z: 0.30
+  floor_target_margin: 0.10
+  floor_prediction_time: 0.30
+  floor_recovery_margin: 0.65
+  floor_barrier_max_accel: 5.5
+  floor_xy_scale_min: 0.20
+  floor_barrier_gain: 12.0
+  floor_barrier_damping: 5.0
 
 reset_profile:
-  # Single OT-residual reset profile. This replaces the legacy curriculum
-  # scheduler so initial geometry is explicit and stable across train/eval.
+  # Explicit reset geometry shared by training and evaluation.
   pursuer_spawn_mode: front_box
   goal_side_angle_deg: 65.0
   goal_side_angle_jitter_deg: 10.0
   target_spawn_x: [-0.9, -0.2]
   target_spawn_y: [-1.0, 1.0]
+  # Target position is sampled independently for every reset/episode.
   front_box_target_x: [-5.4, -4.8]
   front_box_target_y: [-0.8, 0.8]
   front_box_drone_x: [4.3, 5.3]
@@ -119,7 +84,7 @@ reset_profile:
 arena_size: 6.0
 max_height: 5.0
 v_drone: 3.0
-v_prey: 1.0  # multiplier: target max speed = v_drone * v_prey = 3 m/s
+v_prey: 1.0  # legacy/base target speed; per-episode limit is sampled below
 
 # normalized goal-defense reward
 # First priority: actually catch the target.
@@ -128,7 +93,11 @@ v_prey: 1.0  # multiplier: target max speed = v_drone * v_prey = 3 m/s
 catch_reward_coef: 50.0
 goal_penalty_coef: 40.0
 timeout_penalty_coef: 8.0
-reward_profile: ot_residual
+# A timeout is a near miss when at least one pursuer came within this distance
+# of the target at any point in the episode without capturing it.
+timeout_near_miss_distance: 1.0
+reward_profile: minimal_v3
+m3_terminal_collision_penalty: 15.0  # collision and out-of-bounds use the same terminal penalty
 spread_reward_coef: 0.0
 goal_progress_coef: 0.0
 capture_progress_coef: 0.0
@@ -167,6 +136,15 @@ target_dynamics_mode: uav  # point_mass: bounded sphere integrator; uav: APF vel
 target_drone_model: Crazyflie
 target_goal_attraction_coef: 1.0
 target_accel_limit: 3.5
+# Per-episode target domain randomization.  These limits are not privileged
+# Actor inputs; capability must be inferred from the observed target history.
+target_max_speed_range: [3.0, 3.5]
+target_max_accel_range: [3.0, 3.5]
+# Sim-to-real reset: all aircraft start from hover/rest and accelerate through
+# their own dynamics.  Random target capability is retained, but no velocity
+# is injected at reset.
+target_initial_speed_range: [0.0, 0.0]
+target_initial_pitch_deg_range: [0.0, 0.0]
 target_repulsion_coef: 1.0
 target_velocity_damping: 0.25
 target_command_tau: 0.05
@@ -174,9 +152,18 @@ target_uav_velocity_gain: 4.5
 target_uav_max_tilt_deg: 45.0
 target_uav_rate_fraction: 1.0
 target_uav_acc_feedforward_scale: 1.0
-target_physics_max_velocity: 3.0
+target_physics_max_velocity: 3.5
 target_min_z: 0.2
-target_tactical_far_distance: 10.5
+# Preserve the existing adaptive evader unless explicitly selecting goal_sine.
+target_motion_mode: adaptive
+target_sine:
+  trigger_distance: 6.0  # nearest pursuer distance, m; <= activates sine
+  amplitude_range: [0.3, 0.5]  # lateral position-reference amplitude, m
+  period_range: [3.0, 5.0]  # seconds; sampled independently at each episode reset
+  lateral_position_gain: 1.5  # cross-track position error -> velocity, 1/s
+# 10.5 m covered almost the complete 6 m-radius arena and collapsed the
+# initial strategic labels.  6 m creates an actual far-to-near transition.
+target_tactical_far_distance: 6.0
 target_goal_sprint_distance: 1.0
 target_far_goal_gain: 1.0
 target_near_goal_gain: 1.0

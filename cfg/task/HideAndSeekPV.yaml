@@ -1,0 +1,11 @@
+# Current direct position/velocity reference head; legacy heads remain available.
+defaults:
+  - HideAndSeek70Isolated
+
+max_height: 50.0
+env:
+  # 400 x 0.05 s = 20 s. Rollout/update length is a separate PPO setting.
+  max_episode_length: 400
+trajectory_control:
+  reference_mode: bounded_position_velocity
+  action_reference_dim: 6

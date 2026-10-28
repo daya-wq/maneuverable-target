@@ -1,0 +1,10 @@
+# Opt-in weaker evader; preserve all PV aircraft, arena and PPO settings.
+defaults:
+  - HideAndSeekPV
+
+target_motion_mode: goal_sine
+target_sine:
+  trigger_distance: 25.0
+  amplitude_range: [1.0, 2.0]
+  period_range: [3.0, 5.0]
+  lateral_position_gain: 1.5

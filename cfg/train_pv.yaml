@@ -1,0 +1,21 @@
+defaults:
+  - train
+  - override task: HideAndSeekPV
+  - _self_
+
+algo:
+  train_every: 128
+  num_minibatches: 16
+  ppo_epochs: 1
+  actor:
+    pv_consistency_coef: 0.01
+    project_log_std: true
+    log_std_init: -1.5
+    lr: 0.000003
+    lr_scheduler: null
+  critic:
+    lr: 0.00005
+    lr_scheduler: null
+  predictor:
+    max_speed: 17.0
+    max_accel: 12.0

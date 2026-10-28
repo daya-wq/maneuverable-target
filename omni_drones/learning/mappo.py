@@ -88,6 +88,17 @@ def _iter_tensordict_parameters(params):
     return out
 
 
+def _restore_configured_optimizer_lr(optimizer, learning_rate):
+    """Keep loaded Adam moments, but honor the new run's configured rate."""
+    learning_rate = float(learning_rate)
+    if not math.isfinite(learning_rate) or learning_rate < 0:
+        raise ValueError("Configured optimizer learning rate must be finite and nonnegative")
+    for group in optimizer.param_groups:
+        group["lr"] = learning_rate
+        if "initial_lr" in group:
+            group["initial_lr"] = learning_rate
+
+
 class MAPPOPolicy(object):
     def __init__(
         self,
@@ -248,7 +259,11 @@ class MAPPOPolicy(object):
             if self.actor_params is None
             else _iter_tensordict_parameters(self.actor_params)
         )
-        self.actor_opt = torch.optim.Adam(actor_parameters, lr=cfg.lr)
+        self.actor_opt = torch.optim.Adam(
+            actor_parameters,
+            lr=cfg.lr,
+            weight_decay=cfg.get("weight_decay", 0.0),
+        )
         actor_scheduler = cfg.get("lr_scheduler", None) if hasattr(cfg, "get") else getattr(cfg, "lr_scheduler", None)
         if actor_scheduler is not None:
             actor_scheduler = eval(actor_scheduler)
@@ -266,7 +281,11 @@ class MAPPOPolicy(object):
             if self.actor_params is None
             else _iter_tensordict_parameters(self.actor_params)
         )
-        self.actor_opt = torch.optim.Adam(actor_parameters, lr=cfg.lr)
+        self.actor_opt = torch.optim.Adam(
+            actor_parameters,
+            lr=cfg.lr,
+            weight_decay=cfg.get("weight_decay", 0.0),
+        )
         actor_scheduler = cfg.get("lr_scheduler", None) if hasattr(cfg, "get") else getattr(cfg, "lr_scheduler", None)
         if actor_scheduler is None:
             if hasattr(self, "actor_opt_scheduler"):
@@ -397,6 +416,27 @@ class MAPPOPolicy(object):
     def set_actor_frozen(self, frozen: bool):
         self.actor_frozen = bool(frozen)
 
+    def _get_effective_actor_log_std(self) -> Optional[torch.Tensor]:
+        log_std = self._get_actor_log_std_tensor()
+        if log_std is None or self.cfg.actor.get("project_log_std", True):
+            return log_std
+        return log_std.clamp(
+            self.cfg.actor.get("log_std_min", -5.0),
+            self.cfg.actor.get("log_std_max", 1.0),
+        )
+
+    @torch.no_grad()
+    def _project_actor_log_std_(self):
+        """Box-constrain the parameter without cutting its forward gradients."""
+        if not self.cfg.actor.get("project_log_std", True):
+            return
+        log_std = self._get_actor_log_std_tensor()
+        if log_std is not None:
+            log_std.clamp_(
+                self.cfg.actor.get("log_std_min", -5.0),
+                self.cfg.actor.get("log_std_max", 1.0),
+            )
+
     def set_actor_lr(self, lr: float):
         lr = float(lr)
         for group in self.actor_opt.param_groups:
@@ -518,15 +558,15 @@ class MAPPOPolicy(object):
 
     def _prepare_predictor_batch(self, tensordict: TensorDict):
         try:
-            ot_data = tensordict["next"]["agents"]["OT"]
+            prediction_data = tensordict["next"]["agents"]["prediction"]
         except KeyError:
             empty = torch.empty(0, device=self.device)
             return empty, empty, empty.long(), {"predictor_valid_windows": 0.0}
 
-        pred_input = ot_data["pred_input"]
-        target_pos = ot_data["target_pos_world"]
-        strategic_label = ot_data["strategic_label"].squeeze(-1).long()
-        valid = ot_data["valid"].squeeze(-1) > 0.5
+        pred_input = prediction_data["pred_input"]
+        target_pos = prediction_data["target_pos_world"]
+        strategic_label = prediction_data["strategic_label"].squeeze(-1).long()
+        valid = prediction_data["valid"].squeeze(-1) > 0.5
         if pred_input.shape[1] <= self.predictor_horizon * self.predictor_future_stride:
             empty = torch.empty(0, device=pred_input.device)
             return empty, empty, empty.long(), {"predictor_valid_windows": 0.0}
@@ -576,12 +616,12 @@ class MAPPOPolicy(object):
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.predictor_net.parameters(), 10.0)
         self.predictor_optimizer.step()
-        self.predictor_net._ot_train_updates = int(
-            getattr(self.predictor_net, "_ot_train_updates", 0)
+        self.predictor_net._train_updates = int(
+            getattr(self.predictor_net, "_train_updates", 0)
         ) + 1
         out = {f"predictor_{k}": float(v) for k, v in metrics.items()}
         out["predictor_grad_norm"] = float(grad_norm.item())
-        out["predictor_updates"] = float(getattr(self.predictor_net, "_ot_train_updates", 0))
+        out["predictor_updates"] = float(getattr(self.predictor_net, "_train_updates", 0))
         return out
 
     def update_actor(self, batch: TensorDict) -> Dict[str, Any]:
@@ -592,6 +632,11 @@ class MAPPOPolicy(object):
                 "entropy": float(self._get_actor_entropy_bonus().item()) if self._get_actor_entropy_bonus() is not None else 0.0,
                 "ESS": 1.0,
                 "approx_kl": 0.0,
+                "ratio_mean": 1.0,
+                "ratio_std": 0.0,
+                "ratio_min": 1.0,
+                "ratio_max": 1.0,
+                "ratio_clip_fraction": 0.0,
                 "kl_penalty": 0.0,
                 "anchor_loss": 0.0,
                 "actor_update_skipped": 1.0,
@@ -617,14 +662,31 @@ class MAPPOPolicy(object):
         )
 
         log_probs_new = actor_output[self.act_logps_name]
+        consistency_loss = getattr(self.actor.module, "last_pv_consistency_loss", None)
+        if consistency_loss is None:
+            consistency_loss = log_probs_new.sum() * 0.
+        consistency_coef = float(self.cfg.actor.get("pv_consistency_coef", 0.))
 
         ratio = torch.exp(log_probs_new - log_probs_old)
+        ratio_detached = ratio.detach()
+        ratio_stats = {
+            "ratio_mean": ratio_detached.mean().item(),
+            "ratio_std": ratio_detached.std(unbiased=False).item(),
+            "ratio_min": ratio_detached.min().item(),
+            "ratio_max": ratio_detached.max().item(),
+            "ratio_clip_fraction": (
+                (ratio_detached < 1.0 - self.clip_param)
+                | (ratio_detached > 1.0 + self.clip_param)
+            ).float().mean().item(),
+        }
         surr1 = ratio * advantages
         surr2 = (
             torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
             * advantages
         )
-        policy_loss = - torch.mean(torch.min(surr1, surr2) * self.act_dim)
+        # The action distribution already sums all event dimensions (H x C).
+        # Do not multiply the PPO surrogate by the coordinate count again.
+        policy_loss = -torch.mean(torch.min(surr1, surr2))
         approx_kl = torch.mean(log_probs_old - log_probs_new)
         kl_penalty = torch.zeros((), device=policy_loss.device)
         if self.ppo_target_kl is not None and self.ppo_kl_coef > 0.0:
@@ -658,6 +720,7 @@ class MAPPOPolicy(object):
             + entropy_loss * self.entropy_coef
             + kl_penalty * self.ppo_kl_coef
             + anchor_loss * self.anchor_loss_coef
+            + consistency_loss * consistency_coef
         )
         if self.ppo_target_kl is not None and self.ppo_kl_hard_stop and float(approx_kl.item()) > float(self.ppo_target_kl):
             return {
@@ -666,6 +729,7 @@ class MAPPOPolicy(object):
                 "entropy": entropy_bonus.item(),
                 "ESS": ((2 * ratio.logsumexp(0) - (2 * ratio).logsumexp(0)).exp().mean() / ratio.shape[0]).item(),
                 "approx_kl": approx_kl.item(),
+                **ratio_stats,
                 "kl_penalty": kl_penalty.item(),
                 "anchor_loss": anchor_loss.item(),
                 "actor_update_skipped": 1.0,
@@ -678,14 +742,17 @@ class MAPPOPolicy(object):
         )
         
         self.actor_opt.step()
+        self._project_actor_log_std_()
 
         ess = (2 * ratio.logsumexp(0) - (2 * ratio).logsumexp(0)).exp().mean() / ratio.shape[0]
         return {
             "policy_loss": policy_loss.item(),
             "actor_grad_norm": grad_norm.item(),
+            "pv_consistency_loss": consistency_loss.item(),
             "entropy": entropy_bonus.item(),
             "ESS": ess.item(),
             "approx_kl": approx_kl.item(),
+            **ratio_stats,
             "kl_penalty": kl_penalty.item(),
             "anchor_loss": anchor_loss.item(),
             "actor_update_skipped": 0.0,
@@ -705,6 +772,9 @@ class MAPPOPolicy(object):
         value_loss_original = self.critic_loss_fn(b_returns, values)
 
         value_loss = torch.max(value_loss_original, value_loss_clipped)
+        value_clip_fraction = (
+            (values.detach() - b_values).abs() > self.clip_param
+        ).float().mean()
 
         value_loss.backward()  # do not multiply weights here
         grad_norm = nn.utils.clip_grad_norm_(
@@ -716,7 +786,15 @@ class MAPPOPolicy(object):
         return {
             "value_loss": value_loss.mean(),
             "critic_grad_norm": grad_norm.item(),
-            "explained_var": explained_var.item()
+            "explained_var": explained_var.item(),
+            "value_pred_mean": values.detach().mean().item(),
+            "value_pred_std": values.detach().std(unbiased=False).item(),
+            "value_old_mean": b_values.mean().item(),
+            "value_old_std": b_values.std(unbiased=False).item(),
+            "value_target_mean": b_returns.mean().item(),
+            "value_target_std": b_returns.std(unbiased=False).item(),
+            "value_abs_error": (values.detach() - b_returns).abs().mean().item(),
+            "value_clip_fraction": value_clip_fraction.item(),
         }
 
     def _get_dones(self, tensordict: TensorDict):
@@ -729,14 +807,9 @@ class MAPPOPolicy(object):
         return done
 
     def _get_actor_log_std_stats(self) -> Dict[str, float]:
-        log_std = self._get_actor_log_std_tensor()
+        log_std = self._get_effective_actor_log_std()
         if log_std is None:
             return {}
-
-        log_std = log_std.clamp(
-            self.cfg.actor.get("log_std_min", -5.0),
-            self.cfg.actor.get("log_std_max", 1.0),
-        )
 
         return {
             "actor_log_std_mean": log_std.mean().item(),
@@ -745,14 +818,10 @@ class MAPPOPolicy(object):
         }
 
     def _get_actor_entropy_bonus(self) -> Optional[torch.Tensor]:
-        log_std = self._get_actor_log_std_tensor()
+        log_std = self._get_effective_actor_log_std()
         if log_std is None:
             return None
 
-        log_std = log_std.clamp(
-            self.cfg.actor.get("log_std_min", -5.0),
-            self.cfg.actor.get("log_std_max", 1.0),
-        )
         entropy_per_dim = log_std + (0.5 * math.log(2.0 * math.pi * math.e))
         if entropy_per_dim.ndim == 1:
             return entropy_per_dim.sum()
@@ -795,10 +864,21 @@ class MAPPOPolicy(object):
 
         advantages_mean = tensordict["advantages"].mean()
         advantages_std = tensordict["advantages"].std()
+        advantages_min = tensordict["advantages"].min()
+        advantages_max = tensordict["advantages"].max()
+        returns_mean = tensordict["returns"].mean()
+        returns_std = tensordict["returns"].std(unbiased=False)
+        returns_min = tensordict["returns"].min()
+        returns_max = tensordict["returns"].max()
+        old_values_mean = values.mean()
+        old_values_std = values.std(unbiased=False)
+        bootstrap_value_mean = next_value.mean()
         if self.normalize_advantages:
             tensordict["advantages"] = (tensordict["advantages"] - advantages_mean) / (
                 advantages_std + 1e-8
             )
+        normalized_advantages_mean = tensordict["advantages"].mean()
+        normalized_advantages_std = tensordict["advantages"].std(unbiased=False)
 
         if hasattr(self, "value_normalizer"):
             self.value_normalizer.update(tensordict["returns"])
@@ -839,7 +919,7 @@ class MAPPOPolicy(object):
                             )
                         )
             else:
-                logging.warning("OT predictor update skipped: no valid future windows in batch.")
+                logging.warning("Predictor update skipped: no valid future windows in batch.")
 
         # RL_update
         for ppo_epoch in range(self.ppo_epoch):
@@ -871,6 +951,22 @@ class MAPPOPolicy(object):
             train_info.update(predictor_debug_info)
         train_info["advantages_mean"] = advantages_mean.item()
         train_info["advantages_std"] = advantages_std.item()
+        train_info["advantages_min"] = advantages_min.item()
+        train_info["advantages_max"] = advantages_max.item()
+        train_info["normalized_advantages_mean"] = normalized_advantages_mean.item()
+        train_info["normalized_advantages_std"] = normalized_advantages_std.item()
+        train_info["returns_mean"] = returns_mean.item()
+        train_info["returns_std"] = returns_std.item()
+        train_info["returns_min"] = returns_min.item()
+        train_info["returns_max"] = returns_max.item()
+        train_info["rollout_old_value_mean"] = old_values_mean.item()
+        train_info["rollout_old_value_std"] = old_values_std.item()
+        train_info["bootstrap_value_mean"] = bootstrap_value_mean.item()
+        train_info["rollout_reward_mean"] = rewards.mean().item()
+        train_info["rollout_reward_std"] = rewards.std(unbiased=False).item()
+        train_info["rollout_reward_min"] = rewards.min().item()
+        train_info["rollout_reward_max"] = rewards.max().item()
+        train_info["rollout_done_fraction"] = dones.float().mean().item()
         if isinstance(self.agent_spec.action_spec, (BoundedTensorSpec, UnboundedTensorSpec)):
             if self.raw_act_name in tensordict.keys(True):
                 raw_action = tensordict[self.raw_act_name]
@@ -896,6 +992,24 @@ class MAPPOPolicy(object):
             train_info.update(self._get_actor_log_std_stats())
         if hasattr(self, "value_normalizer"):
             train_info["value_running_mean"] = self.value_normalizer.running_mean.mean().item()
+
+        with torch.no_grad():
+            actor_sq_norm = sum(
+                parameter.detach().float().square().sum()
+                for parameter in self.actor.parameters()
+            )
+            critic_sq_norm = sum(
+                parameter.detach().float().square().sum()
+                for parameter in self.critic.parameters()
+            )
+            train_info["actor_param_norm"] = actor_sq_norm.sqrt().item()
+            train_info["critic_param_norm"] = critic_sq_norm.sqrt().item()
+        train_info["actor_lr"] = float(self.actor_opt.param_groups[0]["lr"])
+        train_info["critic_lr"] = float(self.critic_opt.param_groups[0]["lr"])
+        if self.predictor_optimizer is not None:
+            train_info["predictor_lr"] = float(
+                self.predictor_optimizer.param_groups[0]["lr"]
+            )
         
         self.n_updates += 1
         # step LR schedulers if configured
@@ -929,12 +1043,12 @@ class MAPPOPolicy(object):
             "critic_opt": self.critic_opt.state_dict(),
         }
         if self.use_predictor_net and self.predictor_net is not None:
-            state_dict["ot_predictor"] = self.predictor_net.state_dict()
-            state_dict["ot_predictor_updates"] = int(
-                getattr(self.predictor_net, "_ot_train_updates", 0)
+            state_dict["predictor"] = self.predictor_net.state_dict()
+            state_dict["predictor_updates"] = int(
+                getattr(self.predictor_net, "_train_updates", 0)
             )
             if self.predictor_optimizer is not None:
-                state_dict["ot_predictor_opt"] = self.predictor_optimizer.state_dict()
+                state_dict["predictor_opt"] = self.predictor_optimizer.state_dict()
         return state_dict
 
     def set_entropy_coef(self, value: float):
@@ -975,18 +1089,21 @@ class MAPPOPolicy(object):
         self.actor.load_state_dict(module_state, strict=False)
     
     def load_state_dict(self, state_dict):
-        if self.use_predictor_net and self.predictor_net is not None and "ot_predictor" in state_dict:
-            self.predictor_net.load_state_dict(state_dict["ot_predictor"], strict=False)
-            self.predictor_net._ot_train_updates = int(state_dict.get("ot_predictor_updates", 0))
-            if self.predictor_optimizer is not None and "ot_predictor_opt" in state_dict:
+        if self.use_predictor_net and self.predictor_net is not None and "predictor" in state_dict:
+            self.predictor_net.load_state_dict(state_dict["predictor"], strict=False)
+            self.predictor_net._train_updates = int(state_dict.get("predictor_updates", 0))
+            if self.predictor_optimizer is not None and "predictor_opt" in state_dict:
                 try:
-                    self.predictor_optimizer.load_state_dict(state_dict["ot_predictor_opt"])
-                    logging.info("Restored OT predictor optimizer state from checkpoint.")
+                    self.predictor_optimizer.load_state_dict(state_dict["predictor_opt"])
+                    logging.info("Restored predictor optimizer state from checkpoint.")
                 except Exception as e:
-                    logging.warning("Failed to restore OT predictor optimizer state: %s.", e)
+                    logging.warning("Failed to restore predictor optimizer state: %s.", e)
         if self.actor_params is None:
             if "actor" in state_dict:
-                self.actor.load_state_dict(state_dict["actor"], strict=False)
+                compatibility = self.actor.load_state_dict(state_dict["actor"], strict=False)
+                if compatibility.missing_keys or compatibility.unexpected_keys:
+                    logging.info("Actor checkpoint compatibility: missing=%s unexpected=%s",
+                                 compatibility.missing_keys, compatibility.unexpected_keys)
             elif state_dict.get("actor_params", None) is not None:
                 self._load_actor_functional_params_into_module(state_dict["actor_params"])
         else:
@@ -994,9 +1111,14 @@ class MAPPOPolicy(object):
             current_actor_params = self.actor_params.to_tensordict()
             current_actor_params.update(loaded_actor_params)
             self.actor_params = TensorDictParams(current_actor_params)
+        # Old checkpoints may contain raw log_std just below the legacy clamp
+        # floor. Preserve their effective scale and make its gradient live again.
+        self._project_actor_log_std_()
         self._reset_actor_optimizer()
         # Restore optimizer states if available (backward compatible with old checkpoints)
-        if "actor_opt" in state_dict:
+        if self.cfg.actor.get("reset_optimizer_on_load", False):
+            logging.info("Actor optimizer intentionally reset for controlled comparison.")
+        elif "actor_opt" in state_dict:
             try:
                 self.actor_opt.load_state_dict(state_dict["actor_opt"])
                 logging.info("Restored actor optimizer state from checkpoint.")
@@ -1004,6 +1126,8 @@ class MAPPOPolicy(object):
                 logging.warning("Failed to restore actor optimizer state: %s. Using fresh optimizer.", e)
         else:
             logging.info("No actor optimizer state in checkpoint. Using fresh optimizer.")
+        _restore_configured_optimizer_lr(self.actor_opt, self.cfg.actor.lr)
+        logging.info("Actor optimizer effective learning rate: %.9g", self.actor_opt.param_groups[0]["lr"])
         self.critic.load_state_dict(state_dict["critic"])
         if "critic_opt" in state_dict:
             try:
@@ -1013,6 +1137,8 @@ class MAPPOPolicy(object):
                 logging.warning("Failed to restore critic optimizer state: %s. Using fresh optimizer.", e)
         else:
             logging.info("No critic optimizer state in checkpoint. Using fresh optimizer.")
+        _restore_configured_optimizer_lr(self.critic_opt, self.cfg.critic.lr)
+        logging.info("Critic optimizer effective learning rate: %.9g", self.critic_opt.param_groups[0]["lr"])
         self.value_normalizer.load_state_dict(state_dict["value_normalizer"])
         self.reset_prev_action_cache()
 
@@ -1050,7 +1176,13 @@ from .common import make_encoder
 
 def make_ppo_actor(cfg, observation_spec: TensorSpec, action_spec: TensorSpec):
     encoder = make_encoder(cfg, observation_spec)
-    feature_dim = encoder.output_shape.numel()
+    preserve_time_axis = bool(getattr(encoder, "preserve_time_axis", False))
+    feature_dim = (
+        int(encoder.output_shape[-1])
+        if preserve_time_axis
+        else encoder.output_shape.numel()
+    )
+    action_event_dims = int(getattr(encoder, "action_event_dims", 1))
 
     if isinstance(action_spec, MultiDiscreteTensorSpec):
         act_dist = MultiCategoricalModule(
@@ -1065,9 +1197,11 @@ def make_ppo_actor(cfg, observation_spec: TensorSpec, action_spec: TensorSpec):
             act_dist = TanhIndependentNormalModule(
                 feature_dim,
                 action_dim,
+                event_dims=action_event_dims,
                 log_std_init=cfg.get("log_std_init", 0.0),
                 log_std_min=cfg.get("log_std_min", -5.0),
                 log_std_max=cfg.get("log_std_max", 1.0),
+                project_log_std=cfg.get("project_log_std", True),
             )
         else:
             act_dist = DiagGaussian(
@@ -1078,11 +1212,21 @@ def make_ppo_actor(cfg, observation_spec: TensorSpec, action_spec: TensorSpec):
                 log_std_init=cfg.get("log_std_init", 0.0),
                 log_std_min=cfg.get("log_std_min", -5.0),
                 log_std_max=cfg.get("log_std_max", 1.0),
+                project_log_std=cfg.get("project_log_std", True),
             )
     #     # act_dist = IndependentNormalModule(encoder.output_shape.numel(), action_dim, False)
     else:
         raise NotImplementedError(action_spec)
 
+    # Respect the configured small initial action scale for the Tanh head too.
+    # A default Linear init can command a persistent acceleration before PPO
+    # has seen any samples. Loading an existing checkpoint still restores its head.
+    if cfg.tanh and hasattr(act_dist, "fc_mean"):
+        nn.init.orthogonal_(act_dist.fc_mean.weight, float(cfg.get("gain", 0.01)))
+        nn.init.zeros_(act_dist.fc_mean.bias)
+
+    if preserve_time_axis and cfg.get("rnn", None):
+        raise ValueError("Cooperative trajectory actor already models time; do not add an actor RNN.")
     if cfg.get("rnn", None):
         rnn_cls = {"gru": GRU}[cfg.rnn.cls.lower()]
         rnn = rnn_cls(input_size=feature_dim, **cfg.rnn.kwargs)
@@ -1091,6 +1235,8 @@ def make_ppo_actor(cfg, observation_spec: TensorSpec, action_spec: TensorSpec):
 
     prev_action_conditioner = None
     prev_action_cfg = cfg.get("prev_action_conditioning", None)
+    if preserve_time_axis and prev_action_cfg is not None and prev_action_cfg.get("enabled", False):
+        raise ValueError("Previous plans are already encoded; disable prev_action_conditioning.")
     if prev_action_cfg is not None and prev_action_cfg.get("enabled", False):
         hidden_dim = int(prev_action_cfg.get("hidden_dim", feature_dim))
         action_dim = action_spec.shape[-1]
@@ -1108,6 +1254,7 @@ def make_ppo_actor(cfg, observation_spec: TensorSpec, action_spec: TensorSpec):
         act_dist,
         rnn,
         prev_action_conditioner=prev_action_conditioner,
+        pv_consistency_enabled=float(cfg.get("pv_consistency_coef", 0.)) > 0.,
     )
 
 def make_critic(cfg, state_spec: TensorSpec, reward_spec: TensorSpec, centralized=False):
@@ -1136,12 +1283,15 @@ class Actor(nn.Module):
         act_dist: nn.Module,
         rnn: Optional[nn.Module] = None,
         prev_action_conditioner: Optional[nn.Module] = None,
+        pv_consistency_enabled: bool = False,
     ) -> None:
         super().__init__()
         self.encoder = encoder
         self.act_dist = act_dist
         self.rnn = rnn
         self.prev_action_conditioner = prev_action_conditioner
+        self.pv_consistency_enabled = pv_consistency_enabled
+        self.last_pv_consistency_loss = None
 
     def forward(
         self,
@@ -1167,6 +1317,16 @@ class Actor(nn.Module):
             prev_action_input = torch.cat([actor_features, prev_action], dim=-1)
             dist_features = dist_features + self.prev_action_conditioner(prev_action_input)
         action_dist = self.act_dist(dist_features)
+        self.last_pv_consistency_loss = None
+        if self.pv_consistency_enabled and torch.is_grad_enabled():
+            from .modules.cooperative_future import BoundedTrajectoryReferenceDecoder
+            if not self.encoder.preserve_time_axis:
+                raise ValueError("PV consistency requires the cooperative trajectory encoder")
+            try:
+                mean_command = action_dist.deterministic_sample
+            except (AttributeError, NotImplementedError):
+                mean_command = action_dist.mode
+            self.last_pv_consistency_loss = BoundedTrajectoryReferenceDecoder.pv_consistency_loss(mean_command)
 
         if eval_action:
             action_log_probs = action_dist.log_prob(action).unsqueeze(-1)
@@ -1182,7 +1342,17 @@ class Actor(nn.Module):
                 outputs.append(rnn_state)
             return tuple(outputs)
         else:
-            action = action_dist.mode if deterministic else action_dist.sample()
+            if deterministic:
+                # Recent TorchRL TanhNormal deliberately has no analytical
+                # ``mode``; its transformed-location sample is the supported
+                # deterministic action.  Keep ``mode`` as a compatibility
+                # fallback for the other distributions used in this project.
+                try:
+                    action = action_dist.deterministic_sample
+                except (AttributeError, NotImplementedError):
+                    action = action_dist.mode
+            else:
+                action = action_dist.sample()
             action_log_probs = action_dist.log_prob(action).unsqueeze(-1)
             try:
                 action_entropy = action_dist.entropy()
