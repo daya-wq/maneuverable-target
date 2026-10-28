@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-STRATEGIC_LABELS = ["Far_Rush", "Close_Evade", "Goal_Priority", "Goal_Sprint"]
+STRATEGIC_LABELS = ["Goal_Rush", "Evade"]
 
 
 @dataclass
@@ -17,13 +17,17 @@ class StrategicGMMConfig:
     d_model: int = 128
     lstm_layers: int = 1
     n_heads: int = 4
-    n_components: int = 3
+    n_components: int = 1
     pred_horizon: int = 10
     dropout: float = 0.1
     min_var: float = 1e-3
-    n_strategic: int = 4
+    n_strategic: int = 2
     gru_layers: int = 1
     detach_intent_for_gmm: bool = False
+
+    def __post_init__(self):
+        if self.n_components != 1 or self.n_strategic != 2:
+            raise ValueError("This branch requires one trajectory and two strategic intents.")
 
 
 class GRUTrajectoryDecoder(nn.Module):
@@ -78,7 +82,11 @@ class GRUTrajectoryDecoder(nn.Module):
 
 
 class StrategicGMMTrajectoryPredictor(nn.Module):
-    """Strategic-intent conditioned GMM predictor with no maneuver-class head."""
+    """Two-intent, single-Gaussian trajectory predictor.
+
+    Legacy gmm_* keys retain a singleton axis for the environment/Actor adapter;
+    no mixture-weight head or alternative trajectory is constructed.
+    """
 
     def __init__(self, cfg: StrategicGMMConfig | None = None):
         super().__init__()
@@ -122,9 +130,6 @@ class StrategicGMMTrajectoryPredictor(nn.Module):
             nn.Linear(self.cfg.d_model, self.cfg.d_model),
             nn.GELU(),
         )
-        self.weight_head = nn.Linear(self.cfg.d_model, self.K)
-        nn.init.zeros_(self.weight_head.weight)
-        nn.init.zeros_(self.weight_head.bias)
         self.traj_decoder = GRUTrajectoryDecoder(
             self.cfg.d_model,
             self.K,
@@ -162,32 +167,22 @@ class StrategicGMMTrajectoryPredictor(nn.Module):
             )
 
         z = self.fuse(torch.cat([h_strategic, h_trajectory, strategic_for_gmm], dim=-1))
-        gmm_weights = F.softmax(self.weight_head(z), dim=-1)
+        gmm_weights = z.new_ones(batch_size, 1)
         gmm_means, gmm_vars = self.traj_decoder(z, horizon=self.T)
-        mixed_mu, mixed_var = self._compute_mixture(gmm_weights, gmm_means, gmm_vars)
+        mixed_mu, mixed_var = gmm_means[:, 0], gmm_vars[:, 0]
         return {
             "strategic_logits": strategic_logits,
             "strategic_probs": strategic_probs,
             "gmm_weights": gmm_weights,
             "gmm_means": gmm_means,
             "gmm_vars": gmm_vars,
+            "trajectory_mean": gmm_means[:, 0],
+            "trajectory_var": gmm_vars[:, 0],
             "mixed_mu": mixed_mu,
             "mixed_var": mixed_var,
             "attn_strategic": attn_strategic.squeeze(1),
             "attn_trajectory": attn_trajectory.squeeze(1),
         }
-
-    @staticmethod
-    def _compute_mixture(
-        weights: torch.Tensor,
-        means: torch.Tensor,
-        vars_: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        w = weights.unsqueeze(-1).unsqueeze(-1)
-        mixed_mu = (w * means).sum(dim=1)
-        mixed_var = (w * (vars_ + means.square())).sum(dim=1) - mixed_mu.square()
-        return mixed_mu, mixed_var.clamp_min(1e-6)
-
 
 class StrategicGMMLoss(nn.Module):
     def __init__(
@@ -220,10 +215,9 @@ class StrategicGMMLoss(nn.Module):
         gt_strategic: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         l_strategic = F.cross_entropy(pred["strategic_logits"], gt_strategic)
-        l_gmm = self.gmm_nll(
-            pred["gmm_weights"],
-            pred["gmm_means"],
-            pred["gmm_vars"],
+        l_gmm = self.trajectory_nll(
+            pred["gmm_means"][:, 0],
+            pred["gmm_vars"][:, 0],
             gt_future_delta,
         )
         l_speed, l_accel, l_height = self.physics_losses(pred["gmm_means"])
@@ -240,37 +234,32 @@ class StrategicGMMLoss(nn.Module):
             ).float().mean()
             gt_expanded = gt_future_delta.unsqueeze(1)
             per_comp_ade = torch.norm(pred["gmm_means"] - gt_expanded, dim=-1).mean(dim=-1)
-            minade = per_comp_ade.min(dim=-1).values.mean()
+            ade = per_comp_ade[:, 0].mean()
             fde = torch.norm(pred["mixed_mu"][:, -1] - gt_future_delta[:, -1], dim=-1).mean()
-            entropy = -(pred["gmm_weights"] * torch.log(pred["gmm_weights"] + 1e-8)).sum(dim=-1).mean()
         return loss, {
             "loss_total": float(loss.detach().cpu()),
             "loss_strategic": float(l_strategic.detach().cpu()),
-            "loss_gmm_nll": float(l_gmm.detach().cpu()),
+            "loss_trajectory_nll": float(l_gmm.detach().cpu()),
             "loss_speed": float(l_speed.detach().cpu()),
             "loss_accel": float(l_accel.detach().cpu()),
             "loss_height": float(l_height.detach().cpu()),
             "strategic_accuracy": float(strategic_acc.detach().cpu()),
-            "minADE": float(minade.detach().cpu()),
+            "ADE": float(ade.detach().cpu()),
             "FDE": float(fde.detach().cpu()),
-            "gmm_weight_entropy": float(entropy.detach().cpu()),
         }
 
     @staticmethod
-    def gmm_nll(
-        weights: torch.Tensor,
+    def trajectory_nll(
         means: torch.Tensor,
         vars_: torch.Tensor,
         gt: torch.Tensor,
     ) -> torch.Tensor:
-        gt = gt.unsqueeze(1)
         log_prob = -0.5 * (
             1.8378770664093453
             + torch.log(vars_ + 1e-6)
             + (gt - means).square() / (vars_ + 1e-6)
         )
-        log_component = log_prob.sum(dim=(-1, -2)) + torch.log(weights + 1e-8)
-        return -torch.logsumexp(log_component, dim=-1).mean()
+        return -log_prob.sum(dim=(-1, -2)).mean()
 
     def physics_losses(self, means: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if means.shape[2] < 2:

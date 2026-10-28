@@ -4,7 +4,7 @@
 流程:
   仿真运行 → TrajectoryRecorder 记录每步数据
   → episode结束 → 滑窗切分
-  → 构建 30维相对运动学特征 + 4类战术标签
+  → 构建 30维相对运动学特征 + 2类战略标签
   → DataLoader 用于训练
 
 输入特征 (30维):
@@ -13,11 +13,7 @@
   [18:21] target_pos - goal_center  (1个目标 × 3D)
   [21:30] pursuer_pos - goal_center (3个追捕者 × 3D)
 
-战术标签 (4类):
-  0: Far_Rush      — 距离较远，全速冲刺
-  1: Close_Evade   — 距离极近，启动规避机动
-  2: Goal_Priority — 不顾一切冲向守区
-  3: Goal_Sprint   — 最后阶段的直线冲刺
+战略标签 (2类): 0: Goal_Rush（直冲守区）；1: Evade（规避）。
 
 独立于 Isaac Sim，可用合成数据测试。
 """
@@ -35,7 +31,7 @@ except ImportError:
     STRATEGIC_LABELS = _sys.modules["dual_intent_gmm_predictor"].STRATEGIC_LABELS
 
 # 战术标签常量
-STRATEGIC_LABEL_NAMES = STRATEGIC_LABELS  # ["Far_Rush", "Close_Evade", "Goal_Priority", "Goal_Sprint"]
+STRATEGIC_LABEL_NAMES = STRATEGIC_LABELS
 N_STRATEGIC = len(STRATEGIC_LABEL_NAMES)
 
 # goal_center 默认值，可由外部覆盖
@@ -54,44 +50,39 @@ def label_strategic_single(
     far_rush_dist: float = 4.0,
     close_evade_dist: float = 1.5,
     goal_sprint_dist: float = 2.0,
+    motion_mode: str = "adaptive",
+    goal_radius: float = 0.0,
+    goal_height: float = 0.0,
 ) -> int:
     """
-    根据当前态势，用规则判断4类战术标签。
-
-    优先级: Close_Evade > Goal_Sprint > Goal_Priority > Far_Rush
+    Two-intent labels matching the online target policy. For physical data,
+    pass the actual scene thresholds, cylinder dimensions and motion_mode.
+    far_rush_dist remains accepted for old callers but is not a label rule.
 
     Args:
         target_pos:      目标当前位置 [3]
         target_vel:      目标当前速度 [3]
         pursuer_pos:     所有追捕者位置 [n_p, 3]
         goal_center:     守区中心 [3]
-        far_rush_dist:   距追捕者平均距离 > 此值 → Far_Rush
-        close_evade_dist: 最近追捕者 < 此值 → Close_Evade
-        goal_sprint_dist: 距守区 < 此值 → Goal_Sprint
+        far_rush_dist:   旧调用兼容参数，不参与当前标签规则
+        close_evade_dist: 最近追捕者距离阈值，<=视为近距
+        goal_sprint_dist: adaptive最后冲刺距离；此时归为Goal_Rush
+        motion_mode: adaptive 或 goal_sine
+        goal_radius/goal_height: 守区圆柱尺寸；均为0时退化为点目标距离
 
     Returns:
-        label: int, 0~3
+        label: int, 0 or 1
     """
     min_d = float((target_pos.unsqueeze(0) - pursuer_pos).norm(dim=-1).min())
-    goal_d = float((target_pos - goal_center).norm())
-
-    # 速度朝向守区的分量（cos相似度）
-    vel_norm = float(target_vel.norm())
-    goal_dir = (goal_center - target_pos)
-    goal_dir_norm = float(goal_dir.norm())
-    if vel_norm > 1e-6 and goal_dir_norm > 1e-6:
-        cos_goal = float(torch.dot(target_vel, goal_dir) / (vel_norm * goal_dir_norm))
-    else:
-        cos_goal = 0.0
-
-    # 优先级判断
-    if min_d < close_evade_dist:
-        return 1  # Close_Evade
-    if goal_d < goal_sprint_dist and cos_goal > 0.5:
-        return 3  # Goal_Sprint
-    if cos_goal > 0.7:
-        return 2  # Goal_Priority
-    return 0      # Far_Rush
+    if motion_mode == "goal_sine":
+        return int(min_d <= close_evade_dist)
+    if motion_mode != "adaptive":
+        raise ValueError("Unknown target motion_mode: %r" % motion_mode)
+    delta = target_pos - goal_center
+    radial = max(float(delta[:2].norm()) - goal_radius, 0.0)
+    vertical = max(abs(float(delta[2])) - goal_height / 2.0, 0.0)
+    goal_d = (radial * radial + vertical * vertical) ** 0.5
+    return int(min_d <= close_evade_dist and goal_d > goal_sprint_dist and goal_d > min_d)
 
 
 def label_strategic_batch(
@@ -193,7 +184,7 @@ class PredictorDataset(Dataset):
     每个样本:
         obs_history:        [T_obs, 30]  — 30维相对运动学特征序列
         gt_future_delta:    [T_pred, 3]  — 未来位置相对于当前时刻的差值
-        gt_strategic:       scalar (0-3) — 4类战术标签
+        gt_strategic:       scalar (0-1) — 2类战略标签
     """
 
     def __init__(
@@ -202,11 +193,13 @@ class PredictorDataset(Dataset):
         t_pred: int = 10,
         slide_step: int = 2,
         goal_center: Optional[torch.Tensor] = None,
+        label_kwargs: Optional[dict] = None,
     ):
         self.t_obs = t_obs
         self.t_pred = t_pred
         self.slide_step = slide_step
         self.goal_center = goal_center if goal_center is not None else DEFAULT_GOAL_CENTER
+        self.label_kwargs = dict(label_kwargs or {})
 
         self.obs_list: List[torch.Tensor] = []
         self.future_list: List[torch.Tensor] = []
@@ -232,6 +225,7 @@ class PredictorDataset(Dataset):
             episode["target_vel"],
             episode["pursuer_pos"],
             gc,
+            **self.label_kwargs,
         )  # [L]
 
         for start in range(self.t_obs, L - self.t_pred, self.slide_step):

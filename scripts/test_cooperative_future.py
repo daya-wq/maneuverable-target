@@ -33,7 +33,7 @@ from omni_drones.learning.modules.cooperative_future import (
     RelationalAgentInteraction,
     PreviousPlanEncoder,
     FutureQueryBuilder,
-    TimeAlignedGMMCrossAttention,
+    TimeAlignedTrajectoryFusion,
     FactorizedCoordinationBlock,
     CooperativeFutureTokenEncoder,
     BoundedTrajectoryReferenceDecoder,
@@ -121,9 +121,7 @@ def test_1_shapes():
         f"agent_state_attention: expected {(B,nh,N,N)}, got {output['agent_state_attention'].shape}"
     print(f"  [PASS] agent_state_attention: {output['agent_state_attention'].shape}")
 
-    assert output["gmm_attention"].shape == (B, nh, N, H, K), \
-        f"gmm_attention: expected {(B,nh,N,H,K)}, got {output['gmm_attention'].shape}"
-    print(f"  [PASS] gmm_attention: {output['gmm_attention'].shape}")
+    assert output["gmm_attention"] is None, "Single trajectory must not have mode selection attention"
 
     # 各层注意力
     assert len(output["temporal_attention"]) == cfg.coordination_layers
@@ -195,47 +193,18 @@ def test_2_agent_permutation():
 
 
 def test_3_gmm_mode_permutation():
-    """测试 3: GMM 模式排列等变性。"""
-    print_test_header("测试 3: GMM 模式排列等变性")
-
+    """Old mode-permutation slot now verifies removal of mode selection."""
     cfg = CooperativeFutureConfig()
-    inputs = make_dummy_inputs()
     model = CooperativeFutureTokenEncoder(cfg)
+    assert cfg.num_modes == 1 and cfg.num_strategic == 2
+    assert not hasattr(model, "gmm_cross_attention")
+    output = model(**make_dummy_inputs())
+    assert output["gmm_attention"] is None
+    assert not any("q_proj" in name or "k_proj" in name
+                   for name, _ in model.trajectory_fusion.named_parameters())
+    print("  [PASS] one trajectory, two intents, no mode-selection parameters")
 
-    # 原始输出
-    with torch.no_grad():
-        output = model(**inputs)
 
-    # 交换模式 0 和 1
-    inputs_perm = dict(inputs)  # shallow copy
-    for key in ["gmm_mode_tokens", "gmm_point_tokens", "gmm_weights"]:
-        v = inputs_perm[key].clone()
-        v[:, [0, 1]] = v[:, [1, 0]]
-        inputs_perm[key] = v
-    inputs_perm["gmm_log_weights"] = None  # 让 encoder 从 weights 重新计算
-
-    with torch.no_grad():
-        output_perm = model(**inputs_perm)
-
-    # Future tokens 应基本保持不变
-    future_diff = (output_perm["cooperative_future_tokens"] - output["cooperative_future_tokens"]).abs().max().item()
-    print(f"  future_tokens 整体最大差异: {future_diff:.2e}")
-    assert future_diff < 1e-5, f"GMM mode permutation: future_tokens diff too large: {future_diff:.2e}"
-
-    # GMM 注意力模式维应交换
-    gmm_attn = output["gmm_attention"]        # [B, nh, N, H, K]
-    gmm_attn_perm = output_perm["gmm_attention"]
-
-    # 交换后的 mode 0 应等于原始的 mode 1
-    diff_mode0 = (gmm_attn_perm[..., 0] - gmm_attn[..., 1]).abs().max().item()
-    diff_mode1 = (gmm_attn_perm[..., 1] - gmm_attn[..., 0]).abs().max().item()
-    diff_mode2 = (gmm_attn_perm[..., 2] - gmm_attn[..., 2]).abs().max().item()
-    print(f"  gmm_attention: mode0→1 diff={diff_mode0:.2e}, mode1→0 diff={diff_mode1:.2e}, mode2→2 diff={diff_mode2:.2e}")
-    assert diff_mode0 < 1e-5, f"GMM mode permutation: attention mode0 failed"
-    assert diff_mode1 < 1e-5, f"GMM mode permutation: attention mode1 failed"
-    assert diff_mode2 < 1e-5, f"GMM mode permutation: attention mode2 failed"
-
-    print(f"\n  ✅ GMM 模式排列等变性测试通过")
 
 
 def test_4_prev_plan_mask():
@@ -389,7 +358,7 @@ def test_7_gradients():
         ("agent_interaction", model.agent_interaction),
         ("prev_plan_encoder", model.prev_plan_encoder),
         ("query_builder", model.query_builder),
-        ("gmm_cross_attention", model.gmm_cross_attention),
+        ("trajectory_fusion", model.trajectory_fusion),
         ("strategic_encoder", model.strategic_encoder),
     ]
 
@@ -447,7 +416,6 @@ def test_8_extra_checks():
     cfg_off = CooperativeFutureConfig(
         use_agent_interaction=False,
         use_previous_plan=False,
-        use_weight_prior=False,
     )
     model_off = CooperativeFutureTokenEncoder(cfg_off)
     with torch.no_grad():
@@ -460,7 +428,6 @@ def test_8_extra_checks():
     cfg_partial = CooperativeFutureConfig(
         use_agent_interaction=True,
         use_previous_plan=False,
-        use_weight_prior=True,
     )
     model_partial = CooperativeFutureTokenEncoder(cfg_partial)
     with torch.no_grad():
@@ -577,17 +544,16 @@ def test_11_submodules_standalone():
     assert out.shape == (B, N, H, D)
     print(f"  [PASS] FutureQueryBuilder: {out.shape}")
 
-    # TimeAlignedGMMCrossAttention
-    gca = TimeAlignedGMMCrossAttention(cfg)
+    # Single-trajectory same-time fusion.
+    gca = TimeAlignedTrajectoryFusion(cfg)
     out = gca(
         torch.randn(B, N, H, D),
         torch.randn(B, K, D),
         torch.randn(B, K, H, D),
-        torch.randn(B, K).log_softmax(-1),
     )
     assert out["queries"].shape == (B, N, H, D)
-    assert out["attention"].shape == (B, cfg.num_heads, N, H, K)
-    print(f"  [PASS] TimeAlignedGMMCrossAttention: queries={out['queries'].shape}, attn={out['attention'].shape}")
+    assert "attention" not in out
+    print(f"  [PASS] TimeAlignedTrajectoryFusion: queries={out['queries'].shape}")
 
     # FactorizedCoordinationBlock
     fcb = FactorizedCoordinationBlock(cfg)

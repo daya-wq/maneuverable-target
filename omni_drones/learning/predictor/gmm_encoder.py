@@ -12,7 +12,7 @@ GMM 轨迹编码器 — GMMTrajectoryEncoder
     weights:      [B, K]             归一化后的权重（供 Actor 注意力先验使用）
     log_weights:  [B, K]             log(π_k)
     variance_gate:[B, K, H, d_model] 方差门控（诊断用）
-    weight_gate:  scalar             权重融合强度（可学习，诊断用）
+    weight_gate:  scalar             兼容诊断常量0，无权重门参数
 
 设计原则（参见 docs/gmm_encoder_design.md）：
   - 几何信息（均值 + 位移增量 + 时间）始终保留，不被权重覆盖
@@ -39,7 +39,7 @@ class GMMEncoderConfig:
     """GMMTrajectoryEncoder 的超参数。"""
 
     # ── 输入维度 ──────────────────────────────────────────────────────────
-    num_modes:     int = 3      # K: GMM 分量数 = 3
+    num_modes:     int = 1      # single-trajectory axis, not alternative modes
     pred_horizon:  int = 10     # H: 预测步数 (T_pred)
     coord_dim:     int = 3      # 空间维度 (x, y, z)
 
@@ -54,20 +54,8 @@ class GMMEncoderConfig:
     var_eps:    float = 1e-6    # 方差 clamp 下限，避免 log(0)
     weight_eps: float = 1e-6   # 权重 clamp 下限，避免 log(0)
 
-    # ── 权重融合强度初始化 ─────────────────────────────────────────────────
-    # sigmoid(initial_weight_gate_logit) ≈ 初始融合强度
-    # -2.197 → sigmoid ≈ 0.10（权重初始只轻度影响轨迹 token）
-    initial_weight_gate_logit: float = -2.197
-
-    # ── Actor 注意力先验权重 ───────────────────────────────────────────────
-    # scores += weight_prior_scale * log(π_k)
-    # 0.5 → 高权重模式有 ~1 logit 优势，但几何匹配仍可覆盖
-    weight_prior_scale: float = 0.5
-
     # ── 功能开关 ──────────────────────────────────────────────────────────
     use_variance:             bool = True  # 是否使用方差编码
-    use_weight_token:         bool = True  # 是否将权重注入轨迹 token
-    use_weight_attention_bias: bool = True  # 是否在 Actor 交叉注意力加权重先验
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +90,8 @@ class GMMTrajectoryEncoder(nn.Module):
     def __init__(self, cfg: GMMEncoderConfig) -> None:
         super().__init__()
         self.cfg = cfg
+        if cfg.num_modes != 1:
+            raise ValueError("This branch encodes one predicted target trajectory, not a mixture")
         K  = cfg.num_modes
         H  = cfg.pred_horizon
         D  = cfg.coord_dim
@@ -129,7 +119,7 @@ class GMMTrajectoryEncoder(nn.Module):
         # ── 逐点 token 的 LayerNorm ──────────────────────────────────────
         self.point_norm = nn.LayerNorm(dm)
 
-        # ── 轨迹级 [TRAJ] token（三条轨迹共享同一个初始 token）────────────
+        # ── 单条轨迹的 [TRAJ] token ──────────────────────────────────────
         # shape: [1, 1, 1, d_model]  广播到 [B, K, 1, d_model]
         self.traj_token = nn.Parameter(torch.zeros(1, 1, 1, dm))
         nn.init.trunc_normal_(self.traj_token, std=0.02)
@@ -149,18 +139,7 @@ class GMMTrajectoryEncoder(nn.Module):
             num_layers=cfg.num_layers,
         )
 
-        # ── 权重编码器：[π_k, log(π_k)] → d_model ────────────────────────
-        self.weight_encoder = nn.Sequential(
-            nn.Linear(2, dm // 4),
-            nn.SiLU(),
-            nn.Linear(dm // 4, dm),
-        )
-
-        # ── 权重融合强度（可学习标量门）──────────────────────────────────
-        # alpha_weight = sigmoid(weight_gate_logit)
-        self.weight_gate_logit = nn.Parameter(
-            torch.tensor(cfg.initial_weight_gate_logit)
-        )
+        # No mixture-weight embedding or gate for a single trajectory.
 
         # ── 模式 token 的 LayerNorm ──────────────────────────────────────
         self.mode_norm = nn.LayerNorm(dm)
@@ -271,19 +250,8 @@ class GMMTrajectoryEncoder(nn.Module):
         point_context_tokens = trajectory_out[:, :, 1:]    # [B, K, H, dm]
 
         # ── 7. 权重编码 & 轻度调制轨迹 token ─────────────────────────
-        weight_input = torch.stack(
-            [weights, log_weights], dim=-1
-        )                                                                  # [B, K, 2]
-        weight_embeddings = self.weight_encoder(weight_input)              # [B, K, dm]
-
-        alpha_weight = torch.sigmoid(self.weight_gate_logit)               # scalar ∈(0,1)
-
-        if self.cfg.use_weight_token:
-            mode_tokens = self.mode_norm(
-                mode_geo_tokens + alpha_weight * weight_embeddings
-            )                                                              # [B, K, dm]
-        else:
-            mode_tokens = self.mode_norm(mode_geo_tokens)
+        alpha_weight = mode_geo_tokens.new_zeros(())
+        mode_tokens = self.mode_norm(mode_geo_tokens)
 
         # ── 8. 返回 ───────────────────────────────────────────────────
         return {
@@ -300,89 +268,18 @@ class GMMTrajectoryEncoder(nn.Module):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import sys
-
-    print("=" * 60)
-    print("GMMTrajectoryEncoder 单元测试")
-    print("=" * 60)
-
-    device = "cpu"
     cfg = GMMEncoderConfig()
-    encoder = GMMTrajectoryEncoder(cfg).to(device)
-
-    B, K, H = 4, 3, 10
-    means   = torch.randn(B, K, H, 3, device=device)
-    vars_   = torch.rand(B, K, H, 3, device=device).abs() + 1e-4
-    weights = torch.softmax(torch.randn(B, K, device=device), dim=-1)
-
-    # ── 1. 形状测试 ─────────────────────────────────────────────────────
-    out = encoder(means, vars_, weights)
-    assert out["mode_tokens"].shape  == (B, K, cfg.d_model), "mode_tokens 形状错误"
-    assert out["point_tokens"].shape == (B, K, H, cfg.d_model), "point_tokens 形状错误"
-    assert out["weights"].shape      == (B, K), "weights 形状错误"
-    print("[PASS] 形状测试")
-
-    # ── 2. 模式排列等变性测试 ────────────────────────────────────────────
-    # 同时交换模式 0 和 1 的 means / vars / weights
-    means_perm   = means.clone();   means_perm[:, [0, 1]]   = means[:, [1, 0]]
-    vars_perm    = vars_.clone();   vars_perm[:, [0, 1]]    = vars_[:, [1, 0]]
-    weights_perm = weights.clone(); weights_perm[:, [0, 1]] = weights[:, [1, 0]]
-
-    out_perm = encoder(means_perm, vars_perm, weights_perm)
-
-    # 输出模式0/1 也应交换，数值基本一致
-    diff_mode0 = (out_perm["mode_tokens"][:, 0] - out["mode_tokens"][:, 1]).abs().max()
-    diff_mode1 = (out_perm["mode_tokens"][:, 1] - out["mode_tokens"][:, 0]).abs().max()
-    diff_mode2 = (out_perm["mode_tokens"][:, 2] - out["mode_tokens"][:, 2]).abs().max()
-    assert diff_mode0 < 1e-5, f"等变性失败（mode0 diff={diff_mode0:.2e}）"
-    assert diff_mode1 < 1e-5, f"等变性失败（mode1 diff={diff_mode1:.2e}）"
-    assert diff_mode2 < 1e-5, f"等变性失败（mode2 diff={diff_mode2:.2e}）"
-    print("[PASS] 模式排列等变性测试")
-
-    # ── 3. 权重敏感性测试 ─────────────────────────────────────────────
-    weights_alt = weights.clone()
-    weights_alt[:, 0] = 0.8
-    weights_alt[:, 1] = 0.1
-    weights_alt[:, 2] = 0.1
-    weights_alt = weights_alt / weights_alt.sum(-1, keepdim=True)
-
-    out_alt = encoder(means, vars_, weights_alt)
-
-    # point_tokens 应基本不变（权重不直接作用于逐点 token）
-    pt_diff = (out_alt["point_tokens"] - out["point_tokens"]).abs().max()
-    # mode_tokens 允许有限变化
-    mt_diff = (out_alt["mode_tokens"] - out["mode_tokens"]).abs().max()
-    print(f"[INFO] 权重敏感性: point_token 最大差={pt_diff:.4f}, mode_token 最大差={mt_diff:.4f}")
-    print("[PASS] 权重敏感性测试（point_tokens 变化应明显小于 mode_tokens）")
-
-    # ── 4. 方差敏感性测试 ─────────────────────────────────────────────
-    vars_high = vars_.clone()
-    vars_high[:, 1, :, 1] *= 4.0          # 模式1 的 y 方向方差增大
-
-    out_high_var = encoder(means, vars_high, weights)
-
-    pt_diff_mode1 = (out_high_var["point_tokens"][:, 1] - out["point_tokens"][:, 1]).abs().max()
-    pt_diff_mode0 = (out_high_var["point_tokens"][:, 0] - out["point_tokens"][:, 0]).abs().max()
-    assert torch.isfinite(out_high_var["point_tokens"]).all(), "高方差下出现 NaN/Inf"
-    print(f"[INFO] 方差敏感性: mode1 token 最大差={pt_diff_mode1:.4f}, mode0 变化={pt_diff_mode0:.4f}")
-    print("[PASS] 方差敏感性测试")
-
-    # ── 5. 梯度测试（编码器有梯度，输入无梯度） ────────────────────────
-    means_detach   = means.clone().requires_grad_(False)
-    vars_detach    = vars_.clone().requires_grad_(False)
-    weights_detach = weights.clone().requires_grad_(False)
-
-    out_grad = encoder(means_detach, vars_detach, weights_detach)
-    loss = out_grad["mode_tokens"].sum() + out_grad["point_tokens"].sum()
-    loss.backward()
-
-    has_grad = any(p.grad is not None for p in encoder.parameters())
-    assert has_grad, "编码器参数应有梯度"
-    # 输入 tensor 不应有梯度（模拟冻结预测网络）
-    assert means_detach.grad is None, "预测网络输入不应有梯度"
-    print("[PASS] 梯度测试")
-
-    print()
-    print("所有测试通过 ✓")
-    n_params = sum(p.numel() for p in encoder.parameters())
-    print(f"GMMTrajectoryEncoder 参数量: {n_params:,}")
+    encoder = GMMTrajectoryEncoder(cfg)
+    means = torch.randn(4, 1, 10, 3)
+    variances = torch.ones_like(means)
+    weights = torch.ones(4, 1)
+    output = encoder(means, variances, weights)
+    assert output["point_tokens"].shape == (4, 1, 10, cfg.d_model)
+    assert not any("weight_encoder" in name or "weight_gate" in name
+                   for name, _ in encoder.named_parameters())
+    modified = encoder(means, variances * 4, weights)
+    assert torch.isfinite(modified["point_tokens"]).all()
+    assert not torch.allclose(output["point_tokens"], modified["point_tokens"])
+    output["point_tokens"][..., 0].mean().backward()
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in encoder.parameters())
+    print("PASS: single trajectory geometry, variance sensitivity, gradients; no mixture weights")

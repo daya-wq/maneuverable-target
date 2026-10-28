@@ -49,7 +49,7 @@ def load_environment_methods():
     nodes.append(ast.ClassDef(name="Harness", bases=[], keywords=[], decorator_list=[],
                              body=[node for node in cls.body
                                    if isinstance(node, ast.FunctionDef) and node.name in methods]))
-    namespace = dict(torch=torch, TARGET_TACTICAL_CLOSE_EVADE=1, TARGET_TACTICAL_FAR_RUSH=0,
+    namespace = dict(torch=torch, TARGET_INTENT_EVADE=1, TARGET_INTENT_GOAL_RUSH=0,
                      TARGET_MANEUVER_SINE=9, TARGET_MANEUVER_STRAIGHT=0)
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
                  "environment_methods", "exec"), namespace)
@@ -223,7 +223,7 @@ class EnvironmentMethodTests(unittest.TestCase):
         self.assertEqual(self.env.target_maneuver_id.tolist(), [9, 0])
         self.assertEqual(self.env.target_tactical_intent.tolist(), [1, 0])
         probs = self.env._compute_rule_strategic_probs(self.dp, self.tp[:, 0])
-        torch.testing.assert_close(probs, torch.tensor([[0., 1, 0, 0], [1., 0, 0, 0]], device=DEVICE))
+        torch.testing.assert_close(probs, torch.tensor([[0., 1], [1., 0]], device=DEVICE))
 
     def test_no_full_acceleration_normalization(self):
         self.env.target_sine_policy.amplitude.zero_()

@@ -16,7 +16,7 @@ exec(compile(module, str(path), 'exec'), ns)
 
 class GMM(nn.Module):
     def forward(self, means, vars_, weights):
-        return dict(mode_tokens=torch.zeros(2, 3, 8), point_tokens=torch.zeros(2, 3, 10, 8),
+        return dict(mode_tokens=torch.zeros(2, 1, 8), point_tokens=torch.zeros(2, 1, 10, 8),
                     weights=weights, log_weights=weights.log())
 
 class Cooperative(nn.Module):
@@ -25,14 +25,14 @@ class Cooperative(nn.Module):
 
 encoder = ns['CooperativeTrajectoryEncoder']()
 encoder.num_agents, encoder.pred_horizon, encoder.prev_plan_dim = 3, 10, 6
-encoder.num_modes, encoder.num_strategic, encoder.d_model = 3, 4, 8
+encoder.num_modes, encoder.num_strategic, encoder.d_model = 1, 2, 8
 encoder.gmm_encoder, encoder.cooperative_encoder = GMM(), Cooperative()
 encoder.flight_context_encoder = None
 x = dict(agent_history=torch.zeros(2, 3, 10, 9), current_pos=torch.zeros(2, 3, 3),
          current_vel=torch.zeros(2, 3, 3), prev_plan=torch.zeros(2, 3, 10, 6),
-         prev_plan_mask=torch.ones(2, 3, 10), gmm_means=torch.zeros(2, 3, 3, 10, 3),
-         gmm_vars=torch.ones(2, 3, 3, 10, 3), gmm_weights=torch.full((2, 3, 3), 1/3),
-         strategic_probs=torch.full((2, 3, 4), .25), flight_context=torch.zeros(2, 3, 6))
+         prev_plan_mask=torch.ones(2, 3, 10), gmm_means=torch.zeros(2, 3, 1, 10, 3),
+         gmm_vars=torch.ones(2, 3, 1, 10, 3), gmm_weights=torch.ones(2, 3, 1),
+         strategic_probs=torch.full((2, 3, 2), .5), flight_context=torch.zeros(2, 3, 6))
 old = encoder(x)
 x['flight_context'][0, 0, 2] = .25
 encoder.flight_context_encoder = nn.Linear(6, 8)

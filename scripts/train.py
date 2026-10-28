@@ -110,11 +110,10 @@ TENSORBOARD_SCALAR_TAGS = frozenset(
         # Online strategic-intent and GMM trajectory predictor.
         "drone/predictor_loss_total",
         "drone/predictor_loss_strategic",
-        "drone/predictor_loss_gmm_nll",
+        "drone/predictor_loss_trajectory_nll",
         "drone/predictor_strategic_accuracy",
-        "drone/predictor_minADE",
+        "drone/predictor_ADE",
         "drone/predictor_FDE",
-        "drone/predictor_gmm_weight_entropy",
         "drone/predictor_valid_windows",
         # Completed-episode reward components.
         "train/stats.m3_progress",
@@ -159,8 +158,6 @@ TENSORBOARD_SCALAR_TAGS = frozenset(
         "target/maneuver_switches_per_s",
         "target/tactical_0_fraction",
         "target/tactical_1_fraction",
-        "target/tactical_2_fraction",
-        "target/tactical_3_fraction",
         "target/maneuver_0_fraction",
         "target/maneuver_1_fraction",
         "target/maneuver_2_fraction",
@@ -170,6 +167,7 @@ TENSORBOARD_SCALAR_TAGS = frozenset(
         "target/maneuver_6_fraction",
         "target/maneuver_7_fraction",
         "target/maneuver_8_fraction",
+        "target/maneuver_9_fraction",
     }
 )
 
@@ -384,8 +382,8 @@ def summarize_target_maneuvers(data_td: TensorDictBase, step_dt: float):
             add_distribution(output, metric_name, data_td.get(key).float())
 
     for key_name, metric_name, count in (
-        ("target_tactical_intent", "tactical", 4),
-        ("target_maneuver_id", "maneuver", 9),
+        ("target_tactical_intent", "tactical", 2),
+        ("target_maneuver_id", "maneuver", 10),
     ):
         key = ("next", "info", key_name)
         if key not in data_td.keys(True, True):

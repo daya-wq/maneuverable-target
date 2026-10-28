@@ -2,7 +2,7 @@
 Cooperative Future Token Encoder — 协同未来 Token 编码器
 
 将三架追捕无人机的历史状态、当前团队状态、上一周期规划轨迹和
-冻结的 GMM 意图预测结果编码为协同未来表示。
+冻结的双意图、单轨迹预测结果编码为协同未来表示。
 
 编码器输出 cooperative_future_tokens [B, N, H, D]。本文件同时提供无参数的
 BoundedTrajectoryReferenceDecoder；随机轨迹 Head 由 PPO Actor 统一创建，避免在编码器
@@ -31,8 +31,8 @@ class CooperativeFutureConfig:
     """协同未来编码器的超参数。"""
 
     num_agents: int = 3       # N: 追捕无人机数量
-    num_modes: int = 3        # K: GMM 模式数
-    num_strategic: int = 4    # S: 战略意图类别数
+    num_modes: int = 1        # singleton trajectory axis retained for adapters
+    num_strategic: int = 2    # Goal_Rush / Evade
 
     history_len: int = 10     # L: 历史窗口长度
     pred_horizon: int = 10    # H: 预测/规划时域
@@ -48,13 +48,11 @@ class CooperativeFutureConfig:
     coordination_layers: int = 2   # 协同解码器层数
 
     dropout: float = 0.0           # PPO 策略建议 0.0
-    weight_prior_scale: float = 0.5  # λ_π: GMM 权重先验缩放
     eps: float = 1e-6
 
     # 功能开关
     use_agent_interaction: bool = True
     use_previous_plan: bool = True
-    use_weight_prior: bool = True
     use_future_agent_attention: bool = True
 
     # 默认关闭，只用于后续消融
@@ -705,123 +703,33 @@ class FutureQueryBuilder(nn.Module):
 # 5. 时间对齐的 GMM Cross-Attention
 # ============================================================================
 
-class TimeAlignedGMMCrossAttention(nn.Module):
+class TimeAlignedTrajectoryFusion(nn.Module):
+    """Fuse each agent query with the target token at exactly the same time.
+
+    There is one target trajectory, so mode-selection Q/K projections, softmax
+    and mixture-weight priors have no role. Temporal/team attention stays in
+    the following coordination blocks.
     """
-    每个 future query 在同一时刻查询 K 条 GMM 模式。
-
-    注意力分数:
-        s_{i,h,k} = (W_q·q_{i,h})^T (W_k·c_{k,h}) / √d_h + λ_π·log(π_k)
-
-    Input:
-        queries:          [B, N, H, D]
-        gmm_mode_tokens:  [B, K, D]
-        gmm_point_tokens: [B, K, H, D]
-        gmm_log_weights:  [B, K]
-
-    Output:
-        fused_queries: [B, N, H, D]
-        attention:     [B, num_heads, N, H, K]
-    """
-
     def __init__(self, cfg: CooperativeFutureConfig):
         super().__init__()
         self.cfg = cfg
-        dm = cfg.d_model
-        nh = cfg.num_heads
-        self.num_heads = nh
-        self.head_dim = dm // nh
+        self.fuse = nn.Sequential(
+            nn.LayerNorm(2 * cfg.d_model),
+            nn.Linear(2 * cfg.d_model, cfg.d_model),
+            nn.GELU(),
+            nn.Linear(cfg.d_model, cfg.d_model),
+        )
+        self.norm = nn.LayerNorm(cfg.d_model)
 
-        # mode_tokens → 点级上下文
-        self.mode_to_point = nn.Linear(dm, dm, bias=False)
-
-        # Q/K/V 投影
-        self.q_proj = nn.Linear(dm, dm, bias=False)
-        self.k_proj = nn.Linear(dm, dm, bias=False)
-        self.v_proj = nn.Linear(dm, dm, bias=False)
-        self.out_proj = nn.Linear(dm, dm, bias=False)
-
-        # 上下文 LayerNorm
-        self.gmm_context_norm = nn.LayerNorm(dm)
-        self.norm = nn.LayerNorm(dm)
-
-        self._reset_parameters()
-
-    def _reset_parameters(self):
-        nn.init.xavier_uniform_(self.q_proj.weight)
-        nn.init.xavier_uniform_(self.k_proj.weight)
-        nn.init.xavier_uniform_(self.v_proj.weight)
-        nn.init.zeros_(self.out_proj.weight)
-
-    def forward(
-        self,
-        queries: torch.Tensor,
-        gmm_mode_tokens: torch.Tensor,
-        gmm_point_tokens: torch.Tensor,
-        gmm_log_weights: torch.Tensor,
-    ) -> Dict[str, torch.Tensor]:
-        B, N, H, dm = queries.shape
-        K = gmm_mode_tokens.shape[1]
-        nh = self.num_heads
-        hd = self.head_dim
-
-        # 1. 构造模式-时间上下文: c_{k,h} = LayerNorm(z_{k,h} + W_m·m_k)
-        mode_broadcast = self.mode_to_point(gmm_mode_tokens).unsqueeze(2)  # [B, K, 1, D]
-        mode_context = self.gmm_context_norm(
-            gmm_point_tokens + mode_broadcast
-        )  # [B, K, H, D]
-
-        # 2. Q/K/V 投影
-        # queries: [B, N, H, D] → [B, H, N, D]
-        q = self.q_proj(queries).permute(0, 2, 1, 3)  # [B, H, N, D]
-        # mode_context: [B, K, H, D] → [B, H, K, D]
-        k = self.k_proj(mode_context).permute(0, 2, 1, 3)  # [B, H, K, D]
-        v = self.v_proj(mode_context).permute(0, 2, 1, 3)  # [B, H, K, D]
-
-        # 3. 多头拆分
-        def split_heads(x):
-            b_, h_, n_, _ = x.shape
-            return x.reshape(b_, h_, n_, nh, hd).transpose(2, 3)
-            # → [B, H, nh, N/K, hd]
-
-        q = split_heads(q)  # [B, H, nh, N, hd]
-        k = split_heads(k)  # [B, H, nh, K, hd]
-        v = split_heads(v)  # [B, H, nh, K, hd]
-
-        # 4. 时间对齐注意力分数
-        scores = torch.einsum("bhnqd,bhnkd->bhnqk", q, k) / math.sqrt(hd)  # [B, H, nh, N, K]
-
-        # 5. 注入 GMM 权重先验
-        if self.cfg.use_weight_prior:
-            weight_bias = (
-                self.cfg.weight_prior_scale
-                * gmm_log_weights[:, None, None, None, :]  # [B, 1, 1, 1, K]
-            )
-            scores = scores + weight_bias
-
-        attn = torch.softmax(scores, dim=-1)  # [B, H, nh, N, K]
-
-        # 6. 加权聚合
-        context = torch.einsum("bhnqk,bhnkd->bhnqd", attn, v)  # [B, H, nh, N, hd]
-
-        # 合并多头: [B, H, nh, N, hd] → [B, H, N, D]
-        context = context.transpose(2, 3).reshape(B, H, N, dm)
-        context = context.permute(0, 2, 1, 3)  # [B, N, H, D]
-
-        out = self.out_proj(context)
-        fused_simple = self.norm(queries + out)
-
-        # Rearrange attention to match doc: [B, nh, N, H, K]
-        attn_out = attn.permute(0, 2, 3, 1, 4)  # [B, nh, N, H, K]
-
-        return {
-            "queries": fused_simple,
-            "attention": attn_out,
-        }
+    def forward(self, queries, trajectory_tokens, point_tokens):
+        if trajectory_tokens.shape[1] != 1 or point_tokens.shape[1] != 1:
+            raise ValueError("TimeAlignedTrajectoryFusion requires one predicted trajectory")
+        target = point_tokens[:, 0] + trajectory_tokens[:, 0, None, :]
+        target = target[:, None].expand(-1, queries.shape[1], -1, -1)
+        fused = self.norm(queries + self.fuse(torch.cat((queries, target), dim=-1)))
+        return {"queries": fused}
 
 
-# ============================================================================
-# 6. 因子化协同 Block
-# ============================================================================
 
 class FactorizedCoordinationBlock(nn.Module):
     """
@@ -951,7 +859,7 @@ class CooperativeFutureTokenEncoder(nn.Module):
         initial_future_queries:    [B, N, H, D]
         gmm_fused_queries:         [B, N, H, D]
         agent_state_attention:     [B, nh, N, N]
-        gmm_attention:             [B, nh, N, H, K]
+        gmm_attention:             None（旧接口诊断键；模式选择注意力已删除）
         temporal_attention:        List[Tensor]  (每层)
         future_agent_attention:    List[Tensor]  (每层)
     """
@@ -965,7 +873,9 @@ class CooperativeFutureTokenEncoder(nn.Module):
         self.agent_interaction = RelationalAgentInteraction(cfg)
         self.prev_plan_encoder = PreviousPlanEncoder(cfg)
         self.query_builder = FutureQueryBuilder(cfg)
-        self.gmm_cross_attention = TimeAlignedGMMCrossAttention(cfg)
+        if cfg.num_modes != 1 or cfg.num_strategic != 2:
+            raise ValueError("This branch's Actor requires one target trajectory and two intents")
+        self.trajectory_fusion = TimeAlignedTrajectoryFusion(cfg)
         self.strategic_encoder = StrategicIntentTokenEncoder(cfg)
         self.intent_agent_norm = nn.LayerNorm(cfg.d_model)
         self.intent_query_norm = nn.LayerNorm(cfg.d_model)
@@ -994,11 +904,8 @@ class CooperativeFutureTokenEncoder(nn.Module):
         agent_history_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
 
-        # 处理 gmm_log_weights
-        if gmm_log_weights is None:
-            weights = gmm_weights.clamp_min(self.cfg.eps)
-            weights = weights / weights.sum(dim=-1, keepdim=True)
-            gmm_log_weights = torch.log(weights)
+        # Legacy argument names retain an axis of length one. No mode weights
+        # are used by this branch; single-target time alignment is explicit.
 
         # 1. 历史编码
         hist_out = self.history_encoder(agent_history, agent_history_mask)
@@ -1043,15 +950,14 @@ class CooperativeFutureTokenEncoder(nn.Module):
             initial_queries + strategic_intent_token[:, None, None, :]
         )
 
-        # 5. 查询 GMM
-        gmm_out = self.gmm_cross_attention(
+        # 5. Same-time fusion with the single target trajectory.
+        gmm_out = self.trajectory_fusion(
             initial_queries,
             gmm_mode_tokens,
             gmm_point_tokens,
-            gmm_log_weights,
         )
         future_tokens = gmm_out["queries"]
-        gmm_attention = gmm_out["attention"]
+        gmm_attention = None  # no mode-selection attention in this architecture
 
         # 6. 时间和三机因子化协调
         temporal_attentions = []

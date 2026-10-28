@@ -76,25 +76,26 @@ rollout末尾未终止的环境会使用最后状态的Value做bootstrap；真�
 | `drone/returns_mean` | ValueNorm之前Return的均值 | 原始奖励尺度下的Value目标中心 |
 | `drone/bootstrap_value_mean` | rollout末状态反归一化Value的均值 | 异常突变会通过GAE影响整段rollout |
 
-## 5. 战略意图与GMM轨迹预测指标
+## 5. 双战略意图与单轨迹预测指标（2026-10-28）
 
 预测器总损失：
 
 ```text
-L_total = λ战略L战略 + λGMMLGMM
+L_total = λ战略L战略 + λ轨迹L单轨迹NLL
         + λ速度L速度 + λ加速度L加速度 + λ高度L高度
 ```
 
 | 指标名称 | 计算过程 | 含义 |
 |---|---|---|
 | `prediction/loss_total` | 上述五项加权求和 | 预测网络实际用于反向传播的总目标 |
-| `prediction/loss_strategic` | 四类战略标签的交叉熵 | 战略意图分类损失，越低越好 |
-| `prediction/loss_gmm_nll` | 三个高斯轨迹分量对真实未来轨迹的负对数似然 | 同时评价模式权重、轨迹均值和方差，越低越好 |
-| `prediction/strategic_accuracy` | `argmax(战略概率)==真实战略标签`的比例 | 四分类准确率，范围0到1 |
-| `prediction/minADE` | 三条预测轨迹分别计算全时域平均位置误差，取最小值后跨样本平均 | 判断三种可能轨迹中是否至少一条覆盖真值，单位米 |
-| `prediction/FDE` | GMM加权混合轨迹的最后一点与真实终点距离均值 | 最终位置误差，单位米 |
-| `prediction/gmm_weight_entropy` | `mean(-Σ_k w_k log(w_k))` | 模式权重不确定性；接近0表示单模式，三模式均匀时约为`ln(3)` |
+| `prediction/loss_strategic` | 两类战略标签的交叉熵 | Goal_Rush/Evade二分类损失 |
+| `prediction/loss_trajectory_nll` | 单个高斯轨迹分布对真实未来的负对数似然，按时间和坐标求和后跨样本平均 | 联合评价单条均值与方差；不再含模式权重 |
+| `prediction/strategic_accuracy` | `argmax(两类战略概率)==真实战略标签`的比例 | 二分类准确率，范围0到1 |
+| `prediction/ADE` | 每个预测点到对应真实点的欧氏距离，先跨未来时刻、再跨样本平均 | 唯一预测轨迹的平均位置误差，米；不再取三条中的最小值 |
+| `prediction/FDE` | 唯一预测轨迹最后一点与真实终点的距离，跨样本平均 | 最终位置误差，单位米 |
 | `prediction/valid_windows` | 去除跨episode、历史不足等无效片段后剩余的监督窗口数 | 为0表示本次update没有可训练的预测样本 |
+
+旧`prediction/loss_gmm_nll`、`prediction/minADE`、`prediction/gmm_weight_entropy`不再写入新run。单轨迹仍保留逐点方差，不表示保留多模态。
 
 ## 6. 奖励指标及横坐标
 
@@ -183,12 +184,10 @@ reward/dense_raw
 | `target/sampled_max_speed_mps_mean/max` | 本批episode采样速度上限的均值与最大值 | 检查本轮每局15–17 m/s随机化是否生效（旧低速实验为3.0–3.5） |
 | `target/sampled_max_accel_mps2_mean/max` | 本批episode采样加速度上限的均值与最大值 | 检查本轮每局10–12 m/s²随机化是否生效（旧低速实验为3.0–3.5） |
 | `target/sampled_initial_speed_mps_max` | 本批reset初速度大小的最大值 | 实机一致基线应为0；非零直接说明初始化错误 |
-| `target/tactical_switches_per_s` | 战略编号变化次数÷有效采样总时长 | 四种战略切换频率；过高可能是阈值抖动 |
-| `target/maneuver_switches_per_s` | 机动编号变化次数÷有效采样总时长 | 九种局部机动切换频率 |
-| `target/tactical_0_fraction` | 战略0样本数÷有效战略样本数 | `FAR_RUSH`占比 |
-| `target/tactical_1_fraction` | 战略1样本数÷有效战略样本数 | `CLOSE_EVADE`占比 |
-| `target/tactical_2_fraction` | 战略2样本数÷有效战略样本数 | `GOAL_PRIORITY`占比 |
-| `target/tactical_3_fraction` | 战略3样本数÷有效战略样本数 | `GOAL_SPRINT`占比 |
+| `target/tactical_switches_per_s` | 战略编号变化次数÷有效采样总时长 | 两类战略切换频率；过高可能是阈值抖动 |
+| `target/maneuver_switches_per_s` | 机动编号变化次数÷有效采样总时长 | 局部动作编号变化频率；含正弦模式0/9分支变化，不是正弦换向频率 |
+| `target/tactical_0_fraction` | 战略0样本数÷有效战略样本数 | `Goal_Rush`（直冲守区）占比 |
+| `target/tactical_1_fraction` | 战略1样本数÷有效战略样本数 | `Evade`（规避）占比 |
 | `target/maneuver_0_fraction` | 机动0样本比例 | 直行占比 |
 | `target/maneuver_1_fraction` | 机动1样本比例 | 左转占比 |
 | `target/maneuver_2_fraction` | 机动2样本比例 | 右转占比 |
@@ -198,6 +197,7 @@ reward/dense_raw
 | `target/maneuver_6_fraction` | 机动6样本比例 | 左转俯冲占比 |
 | `target/maneuver_7_fraction` | 机动7样本比例 | 右转爬升占比 |
 | `target/maneuver_8_fraction` | 机动8样本比例 | 右转俯冲占比 |
+| `target/maneuver_9_fraction` | 机动9样本比例 | 新目标模式的正弦摆动分支占比 |
 
 判断目标是否达到“高机动”不能只看控制指令或单个最大尖峰。至少同时报告：`speed_mps_p95`、`realized_accel_mps2_p95`、`turn_rate_deg_s_p95`、战略/机动占比和两类切换频率。
 
@@ -209,7 +209,7 @@ reward/dense_raw
 | `safety/target_motor_thrust_fraction_max` | 同上，对目标机电机取最大值 | 验证目标也使用同一70%推力限制 |
 | `train/stats.episode_duration_s` | 每个本轮已结束episode的规划步数×0.05秒，再跨episode平均 | 真实回合持续时间；成功局抓捕时间单独保存在评测summary中 |
 | `train/stats.target_maneuver_switches` | 在100 Hz控制步逐次比较目标局部机动编号，累计后跨结束episode平均 | 每局实际发生多少次机动模式改变，不是每秒切换率 |
-| `train/stats.target_tactical_switches` | 在100 Hz控制步逐次比较四类战略编号，累计后跨结束episode平均 | 每局战略模式改变次数 |
+| `train/stats.target_tactical_switches` | 在100 Hz控制步逐次比较两类战略编号，累计后跨结束episode平均 | 每局直冲/规避切换次数；内部执行阶段切换不重复计为战略变化 |
 
 当前79项精确白名单，内部统计保留完整；新标签只写入本轮新run，不修改历史事件文件。
 场景、70%推力能力推导和夜间评测计划见`docs/OVERNIGHT_70PCT_TEST_PLAN.md`。

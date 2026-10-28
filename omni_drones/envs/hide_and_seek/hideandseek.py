@@ -98,10 +98,10 @@ def project_to_plane(v: torch.Tensor, normal: torch.Tensor) -> torch.Tensor:
     return v - (v * normal).sum(dim=-1, keepdim=True) * normal
 
 
-TARGET_TACTICAL_FAR_RUSH = 0
-TARGET_TACTICAL_CLOSE_EVADE = 1
-TARGET_TACTICAL_GOAL_PRIORITY = 2
-TARGET_TACTICAL_GOAL_SPRINT = 3
+TARGET_INTENT_GOAL_RUSH = 0
+TARGET_INTENT_EVADE = 1
+NUM_STRATEGIC_INTENTS = 2
+NUM_TARGET_TRAJECTORIES = 1
 
 TARGET_MANEUVER_STRAIGHT = 0
 TARGET_MANEUVER_LEFT_TURN = 1
@@ -825,7 +825,7 @@ class HideAndSeek(IsaacEnv):
         )
         self.target_tactical_intent = torch.full(
             (self.num_envs,),
-            TARGET_TACTICAL_FAR_RUSH,
+            TARGET_INTENT_GOAL_RUSH,
             dtype=torch.long,
             device=self.device,
         )
@@ -838,6 +838,10 @@ class HideAndSeek(IsaacEnv):
         self.target_goal_priority_active = torch.zeros(
             self.num_envs, dtype=torch.bool, device=self.device
         )
+        # Internal execution phases preserve the old manoeuvre timer resets;
+        # they are not extra strategic classes or network inputs.
+        self.target_controller_stage = torch.zeros(
+            self.num_envs, dtype=torch.long, device=self.device)
         
         self.central_env_pos = Float3(
             *self.envs_positions[self.central_env_idx].tolist()
@@ -916,12 +920,12 @@ class HideAndSeek(IsaacEnv):
             device=self.device,
         )
         self.target_pos_predicted = None
-        self.predictor_strategic_probs = torch.zeros(self.num_envs, 4, device=self.device)
+        self.predictor_strategic_probs = torch.zeros(self.num_envs, NUM_STRATEGIC_INTENTS, device=self.device)
         self.predictor_strategic_probs[:, 0] = 1.0
-        self.predictor_gmm_weights = torch.zeros(self.num_envs, 3, device=self.device)
+        self.predictor_gmm_weights = torch.zeros(self.num_envs, NUM_TARGET_TRAJECTORIES, device=self.device)
         self.predictor_gmm_weights[:, 0] = 1.0
         self.predictor_gmm_means = torch.zeros(
-            self.num_envs, 3, self.future_prediction_obs_steps, 3, device=self.device
+            self.num_envs, NUM_TARGET_TRAJECTORIES, self.future_prediction_obs_steps, 3, device=self.device
         )
         self.predictor_gmm_vars = torch.ones_like(self.predictor_gmm_means)
         self.predictor_history = torch.zeros(
@@ -1403,13 +1407,13 @@ class HideAndSeek(IsaacEnv):
             "prev_plan_mask": UnboundedContinuousTensorSpec(
                 self.future_prediction_obs_steps
             ),
-            "gmm_weights": UnboundedContinuousTensorSpec(3),
-            "strategic_probs": UnboundedContinuousTensorSpec(4),
+            "gmm_weights": UnboundedContinuousTensorSpec(NUM_TARGET_TRAJECTORIES),
+            "strategic_probs": UnboundedContinuousTensorSpec(NUM_STRATEGIC_INTENTS),
             "gmm_means": UnboundedContinuousTensorSpec(
-                (3, self.future_prediction_obs_steps, 3)
+                (NUM_TARGET_TRAJECTORIES, self.future_prediction_obs_steps, 3)
             ),
             "gmm_vars": UnboundedContinuousTensorSpec(
-                (3, self.future_prediction_obs_steps, 3)
+                (NUM_TARGET_TRAJECTORIES, self.future_prediction_obs_steps, 3)
             ),
         }).to(self.device)
         state_spec = CompositeSpec({
@@ -1428,13 +1432,13 @@ class HideAndSeek(IsaacEnv):
             "target_pos_world": UnboundedContinuousTensorSpec(3),
             "strategic_label": UnboundedContinuousTensorSpec(1),
             "valid": UnboundedContinuousTensorSpec(1),
-            "strategic_probs": UnboundedContinuousTensorSpec(4),
-            "gmm_weights": UnboundedContinuousTensorSpec(3),
+            "strategic_probs": UnboundedContinuousTensorSpec(NUM_STRATEGIC_INTENTS),
+            "gmm_weights": UnboundedContinuousTensorSpec(NUM_TARGET_TRAJECTORIES),
             "gmm_means": UnboundedContinuousTensorSpec(
-                (3, self.future_prediction_obs_steps, 3)
+                (NUM_TARGET_TRAJECTORIES, self.future_prediction_obs_steps, 3)
             ),
             "gmm_vars": UnboundedContinuousTensorSpec(
-                (3, self.future_prediction_obs_steps, 3)
+                (NUM_TARGET_TRAJECTORIES, self.future_prediction_obs_steps, 3)
             ),
         }).to(self.device)
         if self.use_flight_context:
@@ -1540,10 +1544,8 @@ class HideAndSeek(IsaacEnv):
             "out_of_arena": UnboundedContinuousTensorSpec(1),
             "smoothness_coef": UnboundedContinuousTensorSpec(1),
             "pursuer_collisions_count": UnboundedContinuousTensorSpec(1),
-            "strategic_far_rush": UnboundedContinuousTensorSpec(1),
-            "strategic_close_evade": UnboundedContinuousTensorSpec(1),
-            "strategic_goal_priority": UnboundedContinuousTensorSpec(1),
-            "strategic_goal_sprint": UnboundedContinuousTensorSpec(1),
+            "strategic_goal_rush": UnboundedContinuousTensorSpec(1),
+            "strategic_evade": UnboundedContinuousTensorSpec(1),
             # ── minimal_v3 reward stats ──
             "m3_progress": UnboundedContinuousTensorSpec(1),
             "m3_progress_best_delta": UnboundedContinuousTensorSpec(1),
@@ -1829,10 +1831,11 @@ class HideAndSeek(IsaacEnv):
         self.target_vel_cmd[env_ids] = target_initial_velocity.unsqueeze(1)
         self.target_pid_reset[env_ids] = True
         self.pursuer_pid_reset[env_ids] = True
-        self.target_tactical_intent[env_ids] = TARGET_TACTICAL_FAR_RUSH
+        self.target_tactical_intent[env_ids] = TARGET_INTENT_GOAL_RUSH
         self.target_maneuver_id[env_ids] = TARGET_MANEUVER_STRAIGHT
         self.target_maneuver_timer[env_ids] = 0
         self.target_goal_priority_active[env_ids] = False
+        self.target_controller_stage[env_ids] = 0
         if self.target_sine_policy is not None:
             self.target_sine_policy.reset(env_ids)
 
@@ -1936,7 +1939,7 @@ class HideAndSeek(IsaacEnv):
         previous_maneuver = self.target_maneuver_id.clone()
         previous_tactical = self.target_tactical_intent.clone()
         self.target_tactical_intent.copy_(torch.where(
-            sine.active, TARGET_TACTICAL_CLOSE_EVADE, TARGET_TACTICAL_FAR_RUSH))
+            sine.active, TARGET_INTENT_EVADE, TARGET_INTENT_GOAL_RUSH))
         self.target_maneuver_id.copy_(torch.where(
             sine.active, TARGET_MANEUVER_SINE, TARGET_MANEUVER_STRAIGHT))
         self.target_goal_priority_active.zero_()
@@ -2834,7 +2837,8 @@ class HideAndSeek(IsaacEnv):
 
         predictor_cfg = StrategicGMMConfig(
             obs_dim=self.predictor_obs_dim,
-            n_components=3,
+            n_components=NUM_TARGET_TRAJECTORIES,
+            n_strategic=NUM_STRATEGIC_INTENTS,
             pred_horizon=self.future_prediction_obs_steps,
         )
         predictor = StrategicGMMTrajectoryPredictor(predictor_cfg).to(self.device)
@@ -2860,13 +2864,11 @@ class HideAndSeek(IsaacEnv):
             self.predictor_loaded_checkpoint = True
             logging.info("Loaded strategic GMM predictor from %s", checkpoint_path)
         except Exception as exc:
-            self.predictor = None
-            self.predictor_loaded_checkpoint = False
-            logging.warning(
-                "Failed to load predictor from %s; using kinematic GMM: %s",
-                checkpoint_path,
-                exc,
-            )
+            raise RuntimeError(
+                "Predictor checkpoint is incompatible with the two-intent/single-trajectory "
+                "branch. Use a matching checkpoint or train from scratch; old 4-intent/3-mode "
+                "checkpoints remain usable on archive/pv-sine-four-intent-20261028."
+            ) from exc
 
     def _compute_rule_strategic_probs(
         self,
@@ -2882,18 +2884,12 @@ class HideAndSeek(IsaacEnv):
         pursuer_dist = torch.norm(drone_pos - target_pos_flat.unsqueeze(1), dim=-1)
         min_pursuer_dist = pursuer_dist.min(dim=1).values
         if self.target_motion_mode == "goal_sine":
-            # Keep the four-token interface and make supervision agree with the
-            # actual two-branch behaviour, rather than the legacy sprint rules.
             near = min_pursuer_dist <= self.target_sine_policy.trigger_distance
-            zero = torch.zeros_like(near)
-            return torch.stack((~near, near, zero, zero), dim=-1).to(drone_pos.dtype)
+            return torch.stack((~near, near), dim=-1).to(drone_pos.dtype)
         sprint = goal_dist <= self.target_goal_sprint_distance
         near = min_pursuer_dist <= self.target_tactical_far_distance
-        goal_priority = near & (~sprint) & (goal_dist <= min_pursuer_dist)
         close_evade = near & (~sprint) & (goal_dist > min_pursuer_dist)
-        far = ~(sprint | goal_priority | close_evade)
-        probs = torch.stack([far, close_evade, goal_priority, sprint], dim=-1).to(drone_pos.dtype)
-        return probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        return torch.stack((~close_evade, close_evade), dim=-1).to(drone_pos.dtype)
 
     def _build_predictor_frame(
         self,
@@ -2953,7 +2949,7 @@ class HideAndSeek(IsaacEnv):
         target_pos: torch.Tensor,
         target_vel: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Create a stable three-mode fallback while a learned predictor warms up."""
+        """Single constant-velocity fallback while the predictor warms up."""
         batch = target_pos.shape[0]
         time = torch.arange(
             1,
@@ -2961,19 +2957,9 @@ class HideAndSeek(IsaacEnv):
             device=self.device,
             dtype=target_pos.dtype,
         ).view(1, 1, -1, 1) * self.prediction_dt
-        speed = target_vel.norm(dim=-1, keepdim=True).clamp_min(0.25)
-        straight_vel = target_vel
-        goal_vel = safe_normalize(
-            self.goal_region_center.view(1, 3) - target_pos
-        ) * speed
-        nearest = torch.norm(drone_pos - target_pos.unsqueeze(1), dim=-1).argmin(dim=1)
-        nearest_pos = drone_pos[torch.arange(batch, device=self.device), nearest]
-        evade_vel = safe_normalize(target_pos - nearest_pos) * speed
-        mode_vel = torch.stack([straight_vel, goal_vel, evade_vel], dim=1)
-        means = mode_vel.unsqueeze(2) * time
-        weights = torch.tensor([0.5, 0.3, 0.2], device=self.device, dtype=target_pos.dtype)
-        weights = weights.unsqueeze(0).expand(batch, -1)
-        variance = (0.04 + 0.02 * time).expand(batch, 3, -1, 3)
+        means = target_vel[:, None, None, :] * time
+        weights = torch.ones(batch, 1, device=self.device, dtype=target_pos.dtype)
+        variance = (0.04 + 0.02 * time).expand(batch, 1, -1, 3)
         return weights, means, variance
 
     def _predict_gmm(
@@ -3894,10 +3880,8 @@ class HideAndSeek(IsaacEnv):
         self.stats["spread_reward"].add_(spread_reward.mean(-1).unsqueeze(-1))
         self.stats["close_reward"].add_(close_reward.mean(-1).unsqueeze(-1))
         self.stats["role_reward"].add_(role_reward.mean(-1).unsqueeze(-1))
-        self.stats["strategic_far_rush"].add_(self.predictor_strategic_probs[:, 0:1])
-        self.stats["strategic_close_evade"].add_(self.predictor_strategic_probs[:, 1:2])
-        self.stats["strategic_goal_priority"].add_(self.predictor_strategic_probs[:, 2:3])
-        self.stats["strategic_goal_sprint"].add_(self.predictor_strategic_probs[:, 3:4])
+        self.stats["strategic_goal_rush"].add_(self.predictor_strategic_probs[:, 0:1])
+        self.stats["strategic_evade"].add_(self.predictor_strategic_probs[:, 1:2])
         self.stats["phi_team"].add_(self.phi_team.unsqueeze(-1))
         self.stats["phi_block"].add_(self.phi_block.unsqueeze(-1))
         self.stats["phi_pressure"].add_(self.phi_pressure.unsqueeze(-1))
@@ -3956,10 +3940,8 @@ class HideAndSeek(IsaacEnv):
             "spread_reward",
             "close_reward",
             "role_reward",
-            "strategic_far_rush",
-            "strategic_close_evade",
-            "strategic_goal_priority",
-            "strategic_goal_sprint",
+            "strategic_goal_rush",
+            "strategic_evade",
             "phi_team",
             "phi_block",
             "phi_pressure",
@@ -4026,23 +4008,13 @@ class HideAndSeek(IsaacEnv):
         evade_goal_priority_mask = evade_mask & goal_priority_mask
         normal_evade_mask = evade_mask & (~goal_priority_mask)
 
-        new_tactical = torch.full_like(self.target_tactical_intent, TARGET_TACTICAL_FAR_RUSH)
-        new_tactical = torch.where(
-            evade_mask,
-            torch.full_like(new_tactical, TARGET_TACTICAL_CLOSE_EVADE),
-            new_tactical,
-        )
-        new_tactical = torch.where(
-            evade_goal_priority_mask,
-            torch.full_like(new_tactical, TARGET_TACTICAL_GOAL_PRIORITY),
-            new_tactical,
-        )
-        new_tactical = torch.where(
-            sprint_mask,
-            torch.full_like(new_tactical, TARGET_TACTICAL_GOAL_SPRINT),
-            new_tactical,
-        )
-        tactical_changed = self.target_tactical_intent != new_tactical
+        new_tactical = torch.where(normal_evade_mask, TARGET_INTENT_EVADE, TARGET_INTENT_GOAL_RUSH)
+        execution_stage = torch.zeros_like(self.target_controller_stage)
+        execution_stage[normal_evade_mask] = 1
+        execution_stage[evade_goal_priority_mask] = 2
+        execution_stage[sprint_mask] = 3
+        tactical_changed = self.target_controller_stage != execution_stage
+        self.target_controller_stage.copy_(execution_stage)
         self.target_maneuver_timer.sub_(1)
         self.target_maneuver_timer[tactical_changed] = 0
         self.target_tactical_intent.copy_(new_tactical)

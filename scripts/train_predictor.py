@@ -6,10 +6,10 @@
   输入:  [B, T_obs=10, 30] 30维相对运动学特征
   编码:  BiLSTM → H_env
   解耦:  Cross-Attention → h_strategic / h_trajectory
-  分类:  4类战术意图头 (Far_Rush / Close_Evade / Goal_Priority / Goal_Sprint)
-  解码:  Fusion MLP → z → GRU自回归 → GMM(π, μ, σ²)  K=3分量
-  输出:  strategic_probs [B,4] / gmm_weights [B,3] /
-         gmm_means [B,3,T,3] / gmm_vars [B,3,T,3] / mixed_mu [B,T,3]
+  分类:  2类战略意图头 (Goal_Rush / Evade)
+  解码:  Fusion MLP → z → GRU → 单条轨迹均值及方差，无模式权重头
+  输出:  strategic_probs [B,2] / trajectory_mean [B,T,3]
+         兼容键 gmm_means/gmm_vars 的轨迹维为1，gmm_weights恒为1
 
 保存:
   checkpoints/predictor_strategic.pt
@@ -119,7 +119,7 @@ class Config:
     d_model       = 128
     lstm_layers   = 1
     n_heads       = 4
-    n_components  = 3
+    n_components  = 1
     gru_layers    = 1
     dropout       = 0.1
 
@@ -283,13 +283,13 @@ def train_one_epoch(model, loader, loss_fn, optimizer, cfg):
 
         total_loss  += metrics["loss_total"]
         total_acc   += metrics["strategic_accuracy"]
-        total_minade += metrics["minADE"]
+        total_minade += metrics["ADE"]
         n_batches   += 1
 
     return {
         "loss":    total_loss  / n_batches,
         "acc":     total_acc   / n_batches,
-        "minADE":  total_minade / n_batches,
+        "ADE":  total_minade / n_batches,
     }
 
 
@@ -308,14 +308,14 @@ def evaluate(model, loader, loss_fn):
 
         total_loss   += metrics["loss_total"]
         total_acc    += metrics["strategic_accuracy"]
-        total_minade += metrics["minADE"]
+        total_minade += metrics["ADE"]
         total_fde    += metrics["FDE"]
         n_batches    += 1
 
     return {
         "loss":   total_loss   / n_batches,
         "acc":    total_acc    / n_batches,
-        "minADE": total_minade / n_batches,
+        "ADE": total_minade / n_batches,
         "FDE":    total_fde    / n_batches,
     }
 
@@ -330,8 +330,8 @@ def plot_training_curves(train_history, val_history, save_dir):
 
     for ax, key, title in zip(
         axes,
-        ["loss", "acc", "minADE"],
-        ["Total Loss", "Strategic Accuracy", "minADE (m)"],
+        ["loss", "acc", "ADE"],
+        ["Total Loss", "Strategic Accuracy", "ADE (m)"],
     ):
         ax.plot(epochs, train_history[key], label="Train", color="#4a90d9")
         ax.plot(epochs, val_history[key],   label="Val",   color="#e67e22")
@@ -384,7 +384,7 @@ def plot_traj_vs_gt(model, val_loader, save_dir, n_samples=8):
         mixed_mu   = p["mixed_mu"].numpy()     # [T, 3]
         gmm_means  = p["gmm_means"].numpy()    # [K, T, 3]
         gmm_weights = p["gmm_weights"].numpy() # [K]
-        strategic_probs = p["strategic_probs"].numpy()  # [4]
+        strategic_probs = p["strategic_probs"].numpy()  # [2]
         T = gt.shape[0]
         K = gmm_means.shape[0]
 
@@ -465,7 +465,7 @@ def main():
     print("=" * 60)
     print("  意图驱动 GMM 轨迹预测网络 — 训练")
     print(f"  T_obs={10}帧(0.5s)  T_pred={10}帧(0.5s)  obs_dim=30")
-    print(f"  4类战术意图 + K=3 GMM分量 + GRU解码")
+    print(f"  2类战略意图 + 单条轨迹预测 + GRU解码")
     print("=" * 60)
 
     cfg = Config()
@@ -534,7 +534,7 @@ def main():
         pred_horizon  = cfg.t_pred,
         dropout       = cfg.dropout,
         gru_layers    = cfg.gru_layers,
-        n_strategic   = 4,
+        n_strategic   = N_STRATEGIC,
         detach_intent_for_gmm = False,
     )
     model = StrategicGMMTrajectoryPredictor(model_cfg)
@@ -557,8 +557,8 @@ def main():
     # 3. 训练
     # =====================================================================
     print(f"\n[Step 3] 训练 {cfg.n_epochs} epochs...")
-    train_history = {"loss": [], "acc": [], "minADE": []}
-    val_history   = {"loss": [], "acc": [], "minADE": []}
+    train_history = {"loss": [], "acc": [], "ADE": []}
+    val_history   = {"loss": [], "acc": [], "ADE": []}
     best_val_loss = float("inf")
 
     for epoch in range(cfg.n_epochs):
@@ -567,14 +567,14 @@ def main():
         scheduler.step()
 
         for h, m in [(train_history, t_m), (val_history, v_m)]:
-            for k in ["loss", "acc", "minADE"]:
+            for k in ["loss", "acc", "ADE"]:
                 h[k].append(m[k])
 
         if (epoch + 1) % 5 == 0 or epoch == cfg.n_epochs - 1:
             print(
                 f"  Epoch {epoch+1:3d}/{cfg.n_epochs}  "
                 f"train_loss={t_m['loss']:.4f}  val_loss={v_m['loss']:.4f}  "
-                f"acc={v_m['acc']:.3f}  minADE={v_m['minADE']:.4f}m  "
+                f"acc={v_m['acc']:.3f}  ADE={v_m['ADE']:.4f}m  "
                 f"FDE={v_m['FDE']:.4f}m"
             )
 
@@ -588,7 +588,7 @@ def main():
                 "model_config":     model_cfg.__dict__,
                 "val_loss":         best_val_loss,
                 "val_acc":          v_m["acc"],
-                "val_minADE":       v_m["minADE"],
+                "val_ADE":       v_m["ADE"],
             }, ckpt_path)
 
     print(f"\n  最优 val_loss={best_val_loss:.4f}")
@@ -629,14 +629,14 @@ def main():
         f.write(f"  LR        = {cfg.lr}\n\n")
         f.write("Final Validation Metrics (best ckpt):\n")
         f.write(f"  Strategic Accuracy = {final_val['acc']:.4f}\n")
-        f.write(f"  minADE             = {final_val['minADE']:.4f} m\n")
+        f.write(f"  ADE                = {final_val['ADE']:.4f} m\n")
         f.write(f"  FDE                = {final_val['FDE']:.4f} m\n")
         f.write(f"  Val Loss           = {final_val['loss']:.4f}\n\n")
         f.write("Outputs:\n")
-        f.write(f"  strategic_probs  : (B, 4)\n")
-        f.write(f"  gmm_weights      : (B, 3)\n")
-        f.write(f"  gmm_means        : (B, 3, {cfg.t_pred}, 3)\n")
-        f.write(f"  gmm_vars         : (B, 3, {cfg.t_pred}, 3)\n")
+        f.write(f"  strategic_probs  : (B, 2)\n")
+        f.write(f"  gmm_weights      : (B, 1), constant one\n")
+        f.write(f"  gmm_means        : (B, 1, {cfg.t_pred}, 3)\n")
+        f.write(f"  gmm_vars         : (B, 1, {cfg.t_pred}, 3)\n")
         f.write(f"  mixed_mu         : (B, {cfg.t_pred}, 3)  ← RL控制器直接使用\n")
 
     print(f"  report.txt")

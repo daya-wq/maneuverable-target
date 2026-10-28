@@ -47,7 +47,7 @@ def make_specs(num_agents: int, history_len: int, horizon: int, num_modes: int):
                 (num_agents, num_modes, horizon, 3)
             ),
             "gmm_weights": UnboundedContinuousTensorSpec((num_agents, num_modes)),
-            "strategic_probs": UnboundedContinuousTensorSpec((num_agents, 4)),
+            "strategic_probs": UnboundedContinuousTensorSpec((num_agents, 2)),
         }
     )
     action_spec = UnboundedContinuousTensorSpec((num_agents, horizon, 6))
@@ -67,7 +67,7 @@ def make_observation(batch: int, num_agents: int, history_len: int, horizon: int
             "gmm_vars": torch.rand(batch, num_agents, num_modes, horizon, 3, device=device) + 0.01,
             "gmm_weights": weights[:, None].expand(-1, num_agents, -1),
             "strategic_probs": torch.softmax(
-                torch.randn(batch, num_agents, 4, device=device), dim=-1
+                torch.randn(batch, num_agents, 2, device=device), dim=-1
             ),
         },
         batch_size=[batch, num_agents],
@@ -102,7 +102,7 @@ def main():
 
     torch.set_num_threads(args.threads)
     device = torch.device(args.device)
-    num_agents, history_len, horizon, num_modes = 3, 10, 10, 3
+    num_agents, history_len, horizon, num_modes = 3, 10, 10, 1
     observation_spec, action_spec = make_specs(
         num_agents, history_len, horizon, num_modes
     )
